@@ -13,6 +13,7 @@ cargo build
 ```bash
 k21-screen
 ```
+Will run and capture until process is stopp
 
 ## Options
 
@@ -21,11 +22,11 @@ k21-screen
 ## TODO
 
 - [ ] `--output`: Output directory for screenshots
-- [ ] `--format`: Output format (png, jpg, etc.)
 - [ ] `--help`: Show help information
 - [ ] `--version`: Show version information
-- [ ] `--count`: Number of captures to take
-- [ ] `--interval`: Interval in seconds between captures
-- [ ] `--duration`: Duration in seconds to capture the screen
+- [ ] `--format`: Output format (png, jpg, etc.)
 - [ ] `--overwrite`: Overwrite existing files
+- [ ] `--duration`: How long to capture the screen. Eg. `10s`
+- [ ] `--interval`: Interval in seconds between captures
+- [ ] `--count`: Number of captures to take 
 - [ ] `--quality`: Output quality (0-100)
