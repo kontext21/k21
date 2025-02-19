@@ -1,44 +1,108 @@
 use clap::Parser;
-use screenshots::Screen;
-use std::{thread, time::Duration};
+use xcap::Monitor;
+use log::LevelFilter;
+use std::io::Write;
+use image::DynamicImage;
+use anyhow::{Result, Error};
+use std::time::{Duration, Instant};
+use glob::glob;
+use std::fs;
 
 #[derive(Parser)]
-#[command(version, about = "A CLI tool to handle screen refresh rates")]
+#[command(version, about = "A CLI tool to handle screen refresh rates", long_about = None)]
 struct Cli {
     #[arg(long, help = "Screen refresh rate in fps (frames per second)", 
-          value_parser = clap::value_parser!(f64),
-          default_value_t = 0.2)]
-    fps: f64,
+          default_value_t = 1.0)]
+    fps: f32,
 }
 
-fn main() {
-    let cli: Cli = Cli::parse();
-    println!("Starting capture at {} fps", cli.fps);
+pub fn init_logger(name: impl Into<String>) {
+    let crate_name = name.into().replace('-', "_");
 
-    // Get all screens
-    let screens: Vec<Screen> = Screen::all().unwrap();
-    
-    // Use the primary screen (first one)
-    if let Some(screen) = screens.first() {
-        let interval: Duration = Duration::from_secs_f64(1.0 / cli.fps as f64);
-        
-        // Capture screen in a loop
-        loop {
-            let start: std::time::Instant = std::time::Instant::now();
-            let image: image::ImageBuffer<image::Rgba<u8>, Vec<u8>> = screen.capture().unwrap();
-            // let image_path = format!("screenshot_{}.png", start.elapsed().as_millis());
-            let duration: Duration = start.elapsed();
-            println!(
-                "Captured image {}x{} in {:.2?}",
-                image.width(),
-                image.height(),
-                duration
-            );
-            
-            // Wait for next frame
-            thread::sleep(interval);
+    env_logger::builder()
+        .parse_default_env()
+        .filter(Some(&crate_name), LevelFilter::Trace)
+        .format(move |f, rec| {
+            let now = humantime::format_rfc3339_millis(std::time::SystemTime::now());
+            let module = rec.module_path().unwrap_or("<unknown>");
+            let line = rec.line().unwrap_or(u32::MIN);
+            let level = rec.level();
+
+            writeln!(
+                f,
+                "[{} {} {} {}:{}] {}",
+                level,
+                crate_name,
+                now,
+                module,
+                line,
+                rec.args()
+            )
+        })
+        .init();
+}
+
+async fn get_screenshot(monitor_id: u32, ) -> Result<DynamicImage> {
+    let image = std::thread::spawn(move || -> Result<DynamicImage> {
+        let monitor = Monitor::all()
+                .unwrap()
+                .into_iter()
+                .find(|m| m.id() == monitor_id)
+                .ok_or_else(|| anyhow::anyhow!("Monitor not found"))?;
+        let image = monitor.capture_image()
+                .map_err(Error::from)
+                .map(DynamicImage::ImageRgba8)?;
+        Ok(image)
+    }).join().unwrap()?;
+    Ok(image)
+}
+
+#[tokio::main]
+async fn main() {
+    init_logger(env!("CARGO_PKG_NAME"));
+    let cli = Cli::parse();
+    log::info!("Starting capture at {} fps", cli.fps);
+
+    // init tokio runtime
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let _ = rt.enter();
+
+    // get primary monitor
+    let monitor_id = Monitor::all().unwrap().iter().find(|m| m.is_primary()).unwrap().id();
+
+    log::warn!("Monitor ID: {}", monitor_id);
+
+    // delete old screenshots
+    for entry in glob("screenshot-*.png").unwrap().filter_map(Result::ok) {
+        if fs::remove_file(&entry).is_ok() {
+            //log::info!("Removed file {}", entry.display());
         }
-    } else {
-        eprintln!("No screen found!");
+    }
+
+    let mut frame_counter: u64 = 0;
+    let interval = Duration::from_secs_f32(1.0 / cli.fps);
+    loop {
+        let capture_start = Instant::now();
+        let image = get_screenshot(monitor_id).await.unwrap();
+        // generate temp image file name
+        let path = format!("screenshot-{}.png", frame_counter);
+
+        tokio::task::spawn(async move {
+            let _ = image.save_with_format(&path, image::ImageFormat::Png);
+            log::info!("Saved screenshot to {}", path);
+        });
+        let capture_duration = capture_start.elapsed();
+
+        frame_counter += 1;
+        
+        if let Some(diff) = interval.checked_sub(capture_duration) {
+            println!("Sleeping for {:?}", diff);
+            tokio::time::sleep(diff).await;
+        } else {
+            log::warn!("Capture took longer than expected: {:?}, will not sleep", capture_duration);
+        }
     }
 }
