@@ -5,8 +5,12 @@ use image::DynamicImage;
 use log::LevelFilter;
 use std::fs;
 use std::io::Write;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::sync::mpsc::channel;
 use xcap::Monitor;
+use std::path::Path;
 
 mod ocr;
 use crate::ocr::process_ocr;
@@ -16,6 +20,8 @@ mod ocr_win;
 
 #[cfg(target_os = "macos")]
 mod ocr_mac;
+
+mod screen_record;
 
 #[derive(Parser)]
 #[command(version, about = "A CLI tool to handle screen refresh rates", long_about = None)]
@@ -54,7 +60,7 @@ pub fn init_logger(name: impl Into<String>) {
         .init();
 }
 
-async fn get_screenshot(monitor_id: u32) -> Result<DynamicImage> {
+pub async fn get_screenshot(monitor_id: u32) -> Result<DynamicImage> {
     let image = std::thread::spawn(move || -> Result<DynamicImage> {
         let monitor = Monitor::all()
             .unwrap()
@@ -85,6 +91,16 @@ async fn main() {
         .unwrap();
     let _ = rt.enter();
 
+    // setup ctrl-c handler
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+
+    ctrlc::set_handler(move || {
+        log::warn!("Ctrl-C received, stopping...");
+        r.store(false, Ordering::SeqCst);
+    })
+    .expect("Error setting Ctrl-C handler");
+
     // get primary monitor
     let monitor_id = Monitor::all()
         .unwrap()
@@ -102,40 +118,72 @@ async fn main() {
         }
     }
 
-    let mut frame_counter: u64 = 0;
-    let interval = Duration::from_secs_f32(1.0 / cli.fps);
-    loop {
-        let capture_start = Instant::now();
-        let image = get_screenshot(monitor_id).await.unwrap();
-        // generate temp image file name
-        //let path = format!("screenshot-{}.png", frame_counter);
+    let (screenshot_tx, mut screenshot_rx) = channel(512);
 
-        // tokio::task::spawn(async move {
-        //     let _ = image.save_with_format(&path, image::ImageFormat::Png);
-        //     log::info!("Saved screenshot to {}", path);
-        // });
-        let capture_duration = capture_start.elapsed();
+    // this task will capture screenshots at the specified rate
+    // and send them to the main task
+    let screenshot_task = tokio::task::spawn({
+        let running = running.clone();
+        let interval = Duration::from_secs_f32(1.0 / cli.fps);
+        async move {
+            let mut frame_counter: u64 = 0;
+            while running.load(Ordering::SeqCst) {
+                let capture_start = Instant::now();
+                let image = get_screenshot(monitor_id).await.unwrap();
+                if let Err(e) = screenshot_tx.send((frame_counter, image)).await {
+                    log::error!("Error: {}", e.to_string());
+                    break;
+                }
+                let capture_duration = capture_start.elapsed();
+                frame_counter += 1;
 
-        let ocr_start = Instant::now();
-        let ocr_res = process_ocr(&image).await;
-        if let Ok(text) = ocr_res {
-            let ocr_duration = ocr_start.elapsed();
-            log::info!("OCR took {:?}", ocr_duration);
-            log::info!("OCR text: {}", text);
-        } else {
-            log::error!("Error processing OCR: {:?}", ocr_res.unwrap_err());
+                if let Some(diff) = interval.checked_sub(capture_duration) {
+                    log::info!("sleeping for {:?}", diff);
+                    tokio::time::sleep(diff).await;
+                } else {
+                    log::warn!(
+                        "Capture took longer than expected: {:?}, will not sleep",
+                        capture_duration
+                    );
+                }
+            }
         }
+    });
 
-        frame_counter += 1;
+    let mut screen_record = screen_record::ScreenRecorder::new(monitor_id);
 
-        if let Some(diff) = interval.checked_sub(capture_duration) {
-            println!("Sleeping for {:?}", diff);
-            tokio::time::sleep(diff).await;
-        } else {
-            log::warn!(
-                "Capture took longer than expected: {:?}, will not sleep",
-                capture_duration
-            );
+    // main task
+    while running.load(Ordering::SeqCst) {
+        if let Some((frame_number, image)) = screenshot_rx.recv().await {
+            // record the frame
+            screen_record.frame(&image);
+            log::info!("Frame {}", frame_number);
+
+            // save screenshot to disk
+            tokio::task::spawn({
+                let image = image.clone();
+                async move {
+                    let path = format!("screenshot-{}.png", frame_number);
+                    let _ = image.save_with_format(&path, image::ImageFormat::Png);
+                    log::info!("Saved screenshot to {}", path);
+                }
+            });
+
+            // ocr it
+            let ocr_start = Instant::now();
+            let ocr_res = process_ocr(&image).await;
+            if let Ok(text) = ocr_res {
+                let ocr_duration = ocr_start.elapsed();
+                log::info!("OCR took {:?}", ocr_duration);
+                log::info!("OCR text: {}", text);
+            } else {
+                log::error!("Error processing OCR: {:?}", ocr_res.unwrap_err());
+            }
         }
     }
+    log::info!("Exiting...");
+    screenshot_task.await.unwrap();
+    screen_record.save(Path::new("output.mp4"), cli.fps as u32);
+    running.store(false, Ordering::SeqCst);
+    rt.shutdown_timeout(Duration::from_nanos(0));
 }
