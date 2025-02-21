@@ -14,8 +14,8 @@ use crate::ocr::process_ocr;
 #[cfg(target_os = "windows")]
 mod ocr_win;
 
-// #[cfg(target_os = "macos")]
-// mod ocr_mac;
+#[cfg(target_os = "macos")]
+mod ocr_mac;
 
 #[derive(Parser)]
 #[command(version, about = "A CLI tool to handle screen refresh rates", long_about = None)]
