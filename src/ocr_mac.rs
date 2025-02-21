@@ -1,4 +1,3 @@
-use anyhow::Result;
 #[cfg(target_os = "macos")]
 use cidre::{
     cv::{PixelBuf, PixelFormat},
@@ -15,7 +14,7 @@ extern "C" fn release_callback(_refcon: *mut c_void, _data_ptr: *const *const c_
 }
 
 #[cfg(target_os = "macos")]
-async fn process_ocr_macosx(image: &DynamicImage) -> Result<String> {
+pub async fn process_ocr_macosx(image: &DynamicImage) -> String {
     cidre::objc::ar_pool(|| {
         let (width, height) = image.dimensions();
         let rgb = image.grayscale().to_luma8();
@@ -51,10 +50,7 @@ async fn process_ocr_macosx(image: &DynamicImage) -> Result<String> {
         let result = handler.perform(&requests);
 
         if result.is_err() {
-            return Err(anyhow::anyhow!(
-                "Error processing image: {:?}",
-                result.unwrap_err()
-            ))?;
+            return "".to_string();
         }
 
         if let Some(results) = request.results() {
@@ -66,10 +62,10 @@ async fn process_ocr_macosx(image: &DynamicImage) -> Result<String> {
                     ocr_text.push_str(text.to_string().as_str());
                 });
 
-                return Ok(ocr_text);
+                return ocr_text;
             }
         }
 
-        Ok(String::from(""))
+        String::from("")
     })
 }

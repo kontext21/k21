@@ -5,7 +5,7 @@ pub async fn process_ocr(img: &DynamicImage) -> Result<String> {
     #[cfg(target_os = "macos")]
     {
         use crate::ocr_mac::process_ocr_macosx;
-        process_ocr_macosx(img).await
+        Ok(process_ocr_macosx(img).await)
     }
     #[cfg(target_os = "windows")]
     {
