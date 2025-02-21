@@ -10,10 +10,8 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-
+  build-on-windows:
     runs-on: windows-latest
-
     steps:
     - uses: actions/checkout@v4
     - name: Build
@@ -28,4 +26,9 @@ jobs:
         name: windows build (release)
         path: target/release/*.exe
         overwrite: true
-
+  build-on-macos:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build
+      run: cargo build --verbose
