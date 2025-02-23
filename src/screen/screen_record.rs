@@ -67,7 +67,6 @@ impl ScreenRecorder {
         );
         mp4muxer.write_video_with_fps(&self.buf, fps);
         mp4muxer.close();
-        self.buf.clear();
 
         video_buffer.seek(SeekFrom::Start(0)).unwrap();
         let mut video_bytes = Vec::new();
@@ -76,5 +75,10 @@ impl ScreenRecorder {
         std::fs::write(p, &video_bytes).unwrap();
 
         log::info!("Saved {} frames to {}", self.frame_count, p.display());
+
+        // reset
+        self.encoder = Encoder::new().unwrap();
+        self.buf.clear();
+        self.frame_count = 0;
     }
 }

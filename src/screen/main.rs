@@ -2,24 +2,15 @@ use anyhow::{Error, Result};
 use clap::Parser;
 use glob::glob;
 use image::DynamicImage;
-use log::LevelFilter;
+use k21_screen::common::init_logger_exe;
 use std::fs;
-use std::io::Write;
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::io::{self, AsyncWriteExt};
 use tokio::sync::mpsc::channel;
 use xcap::Monitor;
-use std::path::Path;
-
-mod ocr;
-use crate::ocr::process_ocr;
-
-#[cfg(target_os = "windows")]
-mod ocr_win;
-
-#[cfg(target_os = "macos")]
-mod ocr_mac;
 
 mod screen_record;
 
@@ -32,32 +23,18 @@ struct Cli {
         default_value_t = 1.0
     )]
     fps: f32,
-}
-
-pub fn init_logger(name: impl Into<String>) {
-    let crate_name = name.into().replace('-', "_");
-
-    env_logger::builder()
-        .parse_default_env()
-        .filter(Some(&crate_name), LevelFilter::Trace)
-        .format(move |f, rec| {
-            let now = humantime::format_rfc3339_millis(std::time::SystemTime::now());
-            let module = rec.module_path().unwrap_or("<unknown>");
-            let line = rec.line().unwrap_or(u32::MIN);
-            let level = rec.level();
-
-            writeln!(
-                f,
-                "[{} {} {} {}:{}] {}",
-                level,
-                crate_name,
-                now,
-                module,
-                line,
-                rec.args()
-            )
-        })
-        .init();
+    #[arg(
+        long,
+        help = "Duration of each video chunk in seconds",
+        default_value_t = 60
+    )]
+    video_chunk_duration: u64,
+    #[arg(
+        long,
+        help = "Dump image to stdout (for processor)",
+        default_value_t = false
+    )]
+    stdout: bool,
 }
 
 pub async fn get_screenshot(monitor_id: u32) -> Result<DynamicImage> {
@@ -80,7 +57,8 @@ pub async fn get_screenshot(monitor_id: u32) -> Result<DynamicImage> {
 
 #[tokio::main]
 async fn main() {
-    init_logger(env!("CARGO_PKG_NAME"));
+    init_logger_exe();
+
     let cli = Cli::parse();
     log::info!("Starting capture at {} fps", cli.fps);
 
@@ -126,7 +104,7 @@ async fn main() {
         let running = running.clone();
         let interval = Duration::from_secs_f32(1.0 / cli.fps);
         async move {
-            let mut frame_counter: u64 = 0;
+            let mut frame_counter: u64 = 1;
             while running.load(Ordering::SeqCst) {
                 let capture_start = Instant::now();
                 let image = get_screenshot(monitor_id).await.unwrap();
@@ -151,13 +129,48 @@ async fn main() {
     });
 
     let mut screen_record = screen_record::ScreenRecorder::new(monitor_id);
+    let total_fps_in_chunk = cli.fps as u64 * cli.video_chunk_duration;
+    let mut chunk_number = 0;
+
+    let mut save_chunk = |screen_record: &mut screen_record::ScreenRecorder| {
+        // save video chunk to disk with unique name
+        let path = format!("output-{}.mp4", chunk_number);
+        screen_record.save(Path::new(&path), cli.fps as u32);
+        chunk_number += 1;
+    };
 
     // main task
     while running.load(Ordering::SeqCst) {
         if let Some((frame_number, image)) = screenshot_rx.recv().await {
+            // send screenshot to stdout (processor)
+            if cli.stdout {
+                let rgb = image.to_rgb8();
+                let data = rgb.as_raw();
+                let mut stdout = io::stdout();
+
+                log::info!("Sending frame {}, len {}", frame_number, data.len());
+
+                // send frame & size of raw image data
+                stdout.write_all(&frame_number.to_le_bytes()).await.unwrap(); // Send frame number
+                stdout.write_all(&rgb.width().to_le_bytes()).await.unwrap(); // Send width
+                stdout.write_all(&rgb.height().to_le_bytes()).await.unwrap(); // Send height
+                stdout.write_all(&data.len().to_le_bytes()).await.unwrap(); // Send data size
+                stdout.write_all(&data).await.unwrap(); // Send frame data
+                stdout.flush().await.unwrap(); // Ensure it's sent
+            }
+
             // record the frame
             screen_record.frame(&image);
-            log::info!("Frame {}", frame_number);
+            log::info!("frame {}", frame_number);
+
+            if frame_number % total_fps_in_chunk == 0 {
+                log::info!(
+                    "frame {}, total_fps_in_chunk {}",
+                    frame_number,
+                    total_fps_in_chunk
+                );
+                save_chunk(&mut screen_record);
+            }
 
             // save screenshot to disk
             tokio::task::spawn({
@@ -168,22 +181,11 @@ async fn main() {
                     log::info!("Saved screenshot to {}", path);
                 }
             });
-
-            // ocr it
-            let ocr_start = Instant::now();
-            let ocr_res = process_ocr(&image).await;
-            if let Ok(text) = ocr_res {
-                let ocr_duration = ocr_start.elapsed();
-                log::info!("OCR took {:?}", ocr_duration);
-                log::info!("OCR text: {}", text);
-            } else {
-                log::error!("Error processing OCR: {:?}", ocr_res.unwrap_err());
-            }
         }
     }
     log::info!("Exiting...");
     screenshot_task.await.unwrap();
-    screen_record.save(Path::new("output.mp4"), cli.fps as u32);
+    save_chunk(&mut screen_record);
     running.store(false, Ordering::SeqCst);
     rt.shutdown_timeout(Duration::from_nanos(0));
 }

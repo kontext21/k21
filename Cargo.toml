@@ -3,6 +3,14 @@ name = "k21-screen"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "k21-screen"
+path = "src/screen/main.rs"
+
+[[bin]]
+name = "k21-processor"
+path = "src/processor/main.rs"
+
 [dependencies]
 anyhow = "1.0.95"
 image = "0.25.5"
@@ -17,6 +25,7 @@ imageproc = "0.25.0"
 minimp4 = "0.1.2"
 openh264 = "0.7.2"
 ctrlc = "3.4.5"
+mp4 = "0.14.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.58", features = [

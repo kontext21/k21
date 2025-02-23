@@ -17,7 +17,7 @@ Will run and capture until process is stopp
 
 ## Options
 
-- `--fps`: Screen refresh rate in fps (frames per second) - default: 0.2
+- `--fps`: Screen refresh rate in fps (frames per second) - default: 1
 
 ## TODO
 
