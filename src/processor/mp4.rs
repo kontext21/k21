@@ -2,6 +2,7 @@ use crate::mp4_bitstream_converter::*;
 use anyhow::{anyhow, Result};
 use image::DynamicImage;
 use openh264::decoder::{DecodedYUV, Decoder, DecoderConfig, Flush};
+use openh264::formats::YUVSource;
 use std::fs::File;
 use std::io::{Cursor, Read};
 use std::path::Path;
@@ -24,8 +25,6 @@ where
         .ok_or_else(|| anyhow!("Must exist"))?
         .1;
     let track_id = track.track_id();
-    let width = track.width() as usize;
-    let height = track.height() as usize;
     let decoder_options = DecoderConfig::new()
         .debug(true)
         .flush_after_decode(Flush::NoFlush);
@@ -38,6 +37,7 @@ where
         Decoder::with_api_config(openh264::OpenH264API::from_source(), decoder_options).unwrap();
 
     let yuv_to_image = |yuv: DecodedYUV| -> Result<DynamicImage> {
+        let (width, height) = yuv.dimensions();
         let mut rgb = vec![0; width * height * 3];
         yuv.write_rgb8(&mut rgb);
         Ok(DynamicImage::ImageRgb8(
