@@ -26,6 +26,9 @@ minimp4 = "0.1.2"
 openh264 = "0.7.2"
 ctrlc = "3.4.5"
 mp4 = "0.14.0"
+rusqlite = "0.33.0"
+chrono = "0.4"
+dirs = "5.0.1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.58", features = [

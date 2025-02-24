@@ -1,5 +1,5 @@
 use clap::Parser;
-use image::DynamicImage;
+use image::{DynamicImage, RgbImage};
 use log::LevelFilter;
 use mp4::mp4_for_each_frame;
 use std::env;
@@ -9,6 +9,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{self, AsyncReadExt, BufReader};
+
+mod database;
+use crate::database::{create_database, insert_ocr_entry};
 
 mod mp4;
 mod mp4_bitstream_converter;
@@ -74,6 +77,10 @@ async fn main() {
     );
     let cli = Cli::parse();
 
+    if let Err(e) = create_database() {
+        log::error!("Failed to create database: {:?}", e);
+    }
+
     // init tokio runtime
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -122,7 +129,9 @@ async fn main() {
         .await
         .unwrap();
     } else if cli.stdin {
-        let mut stdin = BufReader::new(io::stdin()); // Buffered stdin
+        let mut stdin = BufReader::new(io::stdin());
+        let mut previous_image: Option<RgbImage> = None; // Store previous frame
+        
         loop {
             // Read the frame number (assume it's a u64, 8 bytes)
             let mut frame_number_bytes = [0u8; 8];
@@ -161,13 +170,30 @@ async fn main() {
 
             let rgb_image = image::RgbImage::from_raw(width, height, buffer);
             if let Some(rgb_image) = rgb_image {
-                let image = DynamicImage::ImageRgb8(rgb_image);
-                let ocr_res = process_ocr(&image).await;
-                if let Ok(text) = ocr_res {
-                    log::info!("OCR result: {}", text);
+                let image = DynamicImage::ImageRgb8(rgb_image.clone());
+                
+                // Check image difference if we have a previous frame
+                let should_process = if let Some(prev_img) = &previous_image {
+                    let diff_percentage = calculate_image_difference(&rgb_image, prev_img);
+                    log::debug!("Image difference: {:.2}%", diff_percentage * 100.0);
+                    diff_percentage > 0.05 // 5% threshold
                 } else {
-                    log::error!("Failed to process OCR: {}", ocr_res.unwrap_err());
+                    true // Always process first frame
+                };
+
+                if should_process {
+                    let ocr_res = process_ocr(&image).await;
+                    if let Ok(text) = ocr_res {
+                        let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+                        if let Err(e) = insert_ocr_entry(&timestamp, &text) {
+                            log::error!("Failed to insert OCR entry: {:?}", e);
+                        }
+                    } else {
+                        log::error!("Failed to process OCR: {}", ocr_res.unwrap_err());
+                    }
                 }
+
+                previous_image = Some(rgb_image);
             } else {
                 log::error!("Failed to open image");
             }
@@ -181,4 +207,26 @@ async fn main() {
     log::info!("Exiting...");
     running.store(false, Ordering::SeqCst);
     rt.shutdown_timeout(Duration::from_nanos(0));
+}
+
+/// Calculate the difference percentage between two images
+fn calculate_image_difference(rgb1: &RgbImage, rgb2: &RgbImage) -> f32 {
+    
+    if rgb1.dimensions() != rgb2.dimensions() {
+        return 1.0; // Different dimensions = 100% different
+    }
+
+    let total_pixels = (rgb1.width() * rgb1.height()) as u64;
+    let mut different_pixels = 0u64;
+    
+    for (p1, p2) in rgb1.pixels().zip(rgb2.pixels()) {
+        // Consider pixels different if any RGB component differs by more than 10
+        if (p1[0].abs_diff(p2[0]) > 10) ||
+           (p1[1].abs_diff(p2[1]) > 10) ||
+           (p1[2].abs_diff(p2[2]) > 10) {
+            different_pixels += 1;
+        }
+    }
+    
+    different_pixels as f32 / total_pixels as f32
 }
