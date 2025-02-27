@@ -59,9 +59,15 @@ pub async fn process_ocr_macosx(image: &DynamicImage) -> String {
                 results.iter().for_each(|result| {
                     let observation_result = result.top_candidates(1).get(0).unwrap();
                     let text = observation_result.string();
+                    let bounds = result.bounding_box();
+                    // Vision's coordinate system has (0,0) at bottom-left, with y going up
+                    // To get top-left, we use x and (1 - y) since y increases downward in typical coordinate systems
+                    ocr_text.push_str(&format!("({:.2}, {:.2}) ", bounds.origin.x, 1.0 - bounds.origin.y));
                     ocr_text.push_str(text.to_string().as_str());
+                    ocr_text.push(' ');
                 });
-
+                
+                let ocr_text = ocr_text.trim_end().to_string();
                 return ocr_text;
             }
         }

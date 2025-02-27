@@ -5,7 +5,7 @@ use mp4::mp4_for_each_frame;
 use std::env;
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{self, AsyncReadExt, BufReader};
@@ -24,6 +24,9 @@ mod ocr_win;
 
 #[cfg(target_os = "macos")]
 mod ocr_mac;
+
+mod image_utils;
+use crate::image_utils::images_differ;
 
 #[derive(Parser)]
 #[command(version, about = "A CLI tool to OCR image/video", long_about = None)]
@@ -112,11 +115,18 @@ async fn main() {
             log::error!("Failed to open image: {:?}", image.err());
         }
     } else if cli.mp4.is_some() {
-        mp4_for_each_frame(&cli.mp4.unwrap(), |frame_idx, image| {
+        let char_counter = Arc::new(AtomicI32::new(0));
+        let counter_clone = char_counter.clone();
+        
+        let start_time = std::time::Instant::now();
+        
+        mp4_for_each_frame(&cli.mp4.unwrap(), move |frame_idx, image| {
+            let counter = counter_clone.clone();
             Box::pin(async move {
                 let ocr_res = process_ocr(&image).await;
                 if let Ok(text) = ocr_res {
                     log::info!("Frame {} OCR result: {}", frame_idx, text);
+                    counter.fetch_add(text.len() as i32, Ordering::SeqCst);
                 } else {
                     log::error!(
                         "Frame {} Failed to process OCR: {}",
@@ -128,6 +138,10 @@ async fn main() {
         })
         .await
         .unwrap();
+        
+        let elapsed = start_time.elapsed();
+        log::info!("Total characters: {}", char_counter.load(Ordering::SeqCst));
+        log::info!("Time taken: {:.2?}", elapsed);
     } else if cli.stdin {
         let mut stdin = BufReader::new(io::stdin());
         let mut previous_image: Option<RgbImage> = None; // Store previous frame
@@ -174,9 +188,9 @@ async fn main() {
                 
                 // Check image difference if we have a previous frame
                 let should_process = if let Some(prev_img) = &previous_image {
-                    let diff_percentage = calculate_image_difference(&rgb_image, prev_img);
-                    log::debug!("Image difference: {:.2}%", diff_percentage * 100.0);
-                    diff_percentage > 0.05 // 5% threshold
+                    let diff = images_differ(&rgb_image, prev_img, 0.05);
+                    log::debug!("Images differ: {}", diff);
+                    diff
                 } else {
                     true // Always process first frame
                 };
@@ -207,26 +221,4 @@ async fn main() {
     log::info!("Exiting...");
     running.store(false, Ordering::SeqCst);
     rt.shutdown_timeout(Duration::from_nanos(0));
-}
-
-/// Calculate the difference percentage between two images
-fn calculate_image_difference(rgb1: &RgbImage, rgb2: &RgbImage) -> f32 {
-    
-    if rgb1.dimensions() != rgb2.dimensions() {
-        return 1.0; // Different dimensions = 100% different
-    }
-
-    let total_pixels = (rgb1.width() * rgb1.height()) as u64;
-    let mut different_pixels = 0u64;
-    
-    for (p1, p2) in rgb1.pixels().zip(rgb2.pixels()) {
-        // Consider pixels different if any RGB component differs by more than 10
-        if (p1[0].abs_diff(p2[0]) > 10) ||
-           (p1[1].abs_diff(p2[1]) > 10) ||
-           (p1[2].abs_diff(p2[2]) > 10) {
-            different_pixels += 1;
-        }
-    }
-    
-    different_pixels as f32 / total_pixels as f32
 }
