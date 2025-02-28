@@ -1,7 +1,9 @@
 use clap::Parser;
 use image::{DynamicImage, RgbImage};
+use k21_screen::common::image_sc::utils::images_differ;
+use k21_screen::common::mp4::utils::mp4_for_each_frame;
+use k21_screen::common::ocr::process_ocr;
 use log::LevelFilter;
-use mp4::mp4_for_each_frame;
 use std::env;
 use std::io::Write;
 use std::path::PathBuf;
@@ -12,21 +14,6 @@ use tokio::io::{self, AsyncReadExt, BufReader};
 
 mod database;
 use crate::database::{create_database, insert_ocr_entry};
-
-mod mp4;
-mod mp4_bitstream_converter;
-
-mod ocr;
-use crate::ocr::process_ocr;
-
-#[cfg(target_os = "windows")]
-mod ocr_win;
-
-#[cfg(target_os = "macos")]
-mod ocr_mac;
-
-mod image_utils;
-use crate::image_utils::images_differ;
 
 #[derive(Parser)]
 #[command(version, about = "A CLI tool to OCR image/video", long_about = None)]

@@ -1,20 +1,10 @@
 use image::RgbImage;
 
-/// Returns true if images are significantly different based on the given tolerance
-/// 
-/// # Arguments
-/// * `img1` - First image to compare
-/// * `img2` - Second image to compare
-/// * `tolerance` - Threshold value between 0.0 and 1.0 (e.g., 0.05 means 5% difference tolerance)
-/// 
-/// # Returns
-/// * `true` if images differ by more than the tolerance
-/// * `false` if images are similar within the tolerance
 pub fn images_differ(img1: &RgbImage, img2: &RgbImage, tolerance: f32) -> bool {
     if img1.dimensions() != img2.dimensions() {
         return true; // Different dimensions = always different
     }
-    
+
     let diff_percentage = calculate_image_difference(img1, img2);
     diff_percentage > tolerance
 }

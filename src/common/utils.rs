@@ -17,6 +17,7 @@ pub fn init_logger(name: impl Into<String>) {
 
     env_logger::builder()
         .parse_default_env()
+        .filter_level(LevelFilter::Info)
         .filter(Some(&crate_name), LevelFilter::Trace)
         .format(move |f, rec| {
             let now = humantime::format_rfc3339_millis(std::time::SystemTime::now());

@@ -1,4 +1,3 @@
-use crate::mp4_bitstream_converter::*;
 use anyhow::{anyhow, Result};
 use image::DynamicImage;
 use openh264::decoder::{DecodedYUV, Decoder, DecoderConfig, Flush};
@@ -7,6 +6,10 @@ use std::fs::File;
 use std::io::{Cursor, Read};
 use std::path::Path;
 use std::time::Instant;
+use std::path::PathBuf;
+use super::bitstream_converter::Mp4BitstreamConverter;
+use crate::common::image_sc::utils::calculate_threshold_exceeded_ratio;
+use crate::common::ocr::process_ocr;
 
 pub async fn mp4_for_each_frame<P, F>(path: P, f: F) -> Result<()>
 where
@@ -122,7 +125,7 @@ where
                 let should_process = if let Some(prev_image) = &previous_image {
                     // Time actual image difference calculation
                     let diff_start = Instant::now();
-                    let result = crate::image_utils::calculate_threshold_exceeded_ratio(
+                    let result = calculate_threshold_exceeded_ratio(
                         current_luma_image, prev_image.as_slice(), 0.05);
                     image_diff_time += diff_start.elapsed();
                     result > 0.05
@@ -139,6 +142,8 @@ where
                 if should_process {
                     // Callback timing
                     f(frame_idx, current_dynamic_image.clone()).await;
+                } else {
+                    log::info!("Frame {} not processed", frame_idx);
                 }
                 callback_time += callback_start.elapsed();
                 frame_idx += 1;
@@ -179,7 +184,7 @@ where
         let should_process = if let Some(prev_image) = &previous_image {
             // Time actual image difference calculation
             let diff_start = Instant::now();
-            let result = crate::image_utils::calculate_threshold_exceeded_ratio(
+            let result = calculate_threshold_exceeded_ratio(
                 current_luma_image, prev_image.as_slice(), 0.05);
             image_diff_time += diff_start.elapsed();
             result > 0.05
@@ -213,6 +218,28 @@ where
     log::info!("  - Flush time: {:?}", flush_time);
     log::info!("  - Total frame processing time: {:?}", frame_processing_start.elapsed());
     log::info!("Total execution time: {:?}", total_start.elapsed());
+    
+    Ok(())
+}
+
+pub async fn process_mp4_frames(mp4_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+    log::info!("Processing MP4 frames");
+    mp4_for_each_frame(mp4_path, move |frame_idx, image| {
+        Box::pin(async move {
+            log::info!("Processing frame {}", frame_idx);
+            let ocr_res = process_ocr(&image).await;
+            if let Ok(text) = ocr_res {
+                log::info!("Frame {} OCR result: {}", frame_idx, text);
+            } else {
+                log::error!(
+                    "Frame {} Failed to process OCR: {}",
+                    frame_idx,
+                    ocr_res.unwrap_err()
+                );
+            }
+        })
+    })
+    .await?;
     
     Ok(())
 }

@@ -2,6 +2,7 @@
 name = "k21-screen"
 version = "0.1.0"
 edition = "2021"
+default-run = "k21-server"
 
 [[bin]]
 name = "k21-screen"
@@ -10,6 +11,10 @@ path = "src/screen/main.rs"
 [[bin]]
 name = "k21-processor"
 path = "src/processor/main.rs"
+
+[[bin]]
+name = "k21-server"
+path = "src/server/main.rs"
 
 [dependencies]
 anyhow = "1.0.95"
@@ -29,6 +34,8 @@ mp4 = "0.14.0"
 rusqlite = { version = "0.33.0", features = ["bundled"] }
 chrono = "0.4"
 dirs = "5.0.1"
+axum = "0.7"
+serde = { version = "1.0", features = ["derive"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.58", features = [
