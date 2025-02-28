@@ -2,7 +2,7 @@ use anyhow::{Error, Result};
 use clap::Parser;
 use glob::glob;
 use image::DynamicImage;
-use k21_screen::common::init_logger_exe;
+use k21_screen::common::utils::init_logger_exe;
 use std::fs;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -35,6 +35,18 @@ struct Cli {
         default_value_t = false
     )]
     stdout: bool,
+    #[arg(
+        long,
+        help = "Save screenshot to disk", 
+        default_value_t = false
+    )]
+    save_screenshot: bool,
+    #[arg(
+        long, 
+        help = "Save video to disk", 
+        default_value_t = false
+    )]
+    save_video: bool,
 }
 
 pub async fn get_screenshot(monitor_id: u32) -> Result<DynamicImage> {
@@ -160,32 +172,39 @@ async fn main() {
             }
 
             // record the frame
-            screen_record.frame(&image);
-            log::info!("frame {}", frame_number);
+            if cli.save_video {
+                screen_record.frame(&image);
 
-            if frame_number % total_fps_in_chunk == 0 {
-                log::info!(
-                    "frame {}, total_fps_in_chunk {}",
-                    frame_number,
-                    total_fps_in_chunk
-                );
-                save_chunk(&mut screen_record);
+                log::info!("frame {}", frame_number);
+
+                if frame_number % total_fps_in_chunk == 0 {
+                    log::info!(
+                        "frame {}, total_fps_in_chunk {}",
+                        frame_number,
+                        total_fps_in_chunk
+                    );
+                    save_chunk(&mut screen_record);
+                }
             }
 
             // save screenshot to disk
-            tokio::task::spawn({
-                let image = image.clone();
-                async move {
-                    let path = format!("screenshot-{}.png", frame_number);
-                    let _ = image.save_with_format(&path, image::ImageFormat::Png);
-                    log::info!("Saved screenshot to {}", path);
-                }
-            });
+            if cli.save_screenshot {
+                tokio::task::spawn({
+                    let image = image.clone();
+                    async move {
+                        let path = format!("screenshot-{}.png", frame_number);
+                        let _ = image.save_with_format(&path, image::ImageFormat::Png);
+                        log::info!("Saved screenshot to {}", path);
+                    }
+                });
+            }
         }
     }
     log::info!("Exiting...");
     screenshot_task.await.unwrap();
-    save_chunk(&mut screen_record);
+    if cli.save_video {
+        save_chunk(&mut screen_record);
+    }
     running.store(false, Ordering::SeqCst);
     rt.shutdown_timeout(Duration::from_nanos(0));
 }

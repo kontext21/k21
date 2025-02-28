@@ -1,26 +1,19 @@
 use clap::Parser;
-use image::DynamicImage;
+use image::{DynamicImage, RgbImage};
+use k21_screen::common::image_sc::utils::images_differ;
+use k21_screen::common::mp4::utils::mp4_for_each_frame;
+use k21_screen::common::ocr::process_ocr;
 use log::LevelFilter;
-use mp4::mp4_for_each_frame;
 use std::env;
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{self, AsyncReadExt, BufReader};
 
-mod mp4;
-mod mp4_bitstream_converter;
-
-mod ocr;
-use crate::ocr::process_ocr;
-
-#[cfg(target_os = "windows")]
-mod ocr_win;
-
-#[cfg(target_os = "macos")]
-mod ocr_mac;
+mod database;
+use crate::database::{create_database, insert_ocr_entry};
 
 #[derive(Parser)]
 #[command(version, about = "A CLI tool to OCR image/video", long_about = None)]
@@ -74,6 +67,10 @@ async fn main() {
     );
     let cli = Cli::parse();
 
+    if let Err(e) = create_database() {
+        log::error!("Failed to create database: {:?}", e);
+    }
+
     // init tokio runtime
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -105,11 +102,18 @@ async fn main() {
             log::error!("Failed to open image: {:?}", image.err());
         }
     } else if cli.mp4.is_some() {
-        mp4_for_each_frame(&cli.mp4.unwrap(), |frame_idx, image| {
+        let char_counter = Arc::new(AtomicI32::new(0));
+        let counter_clone = char_counter.clone();
+        
+        let start_time = std::time::Instant::now();
+        
+        mp4_for_each_frame(&cli.mp4.unwrap(), move |frame_idx, image| {
+            let counter = counter_clone.clone();
             Box::pin(async move {
                 let ocr_res = process_ocr(&image).await;
                 if let Ok(text) = ocr_res {
                     log::info!("Frame {} OCR result: {}", frame_idx, text);
+                    counter.fetch_add(text.len() as i32, Ordering::SeqCst);
                 } else {
                     log::error!(
                         "Frame {} Failed to process OCR: {}",
@@ -121,8 +125,14 @@ async fn main() {
         })
         .await
         .unwrap();
+        
+        let elapsed = start_time.elapsed();
+        log::info!("Total characters: {}", char_counter.load(Ordering::SeqCst));
+        log::info!("Time taken: {:.2?}", elapsed);
     } else if cli.stdin {
-        let mut stdin = BufReader::new(io::stdin()); // Buffered stdin
+        let mut stdin = BufReader::new(io::stdin());
+        let mut previous_image: Option<RgbImage> = None; // Store previous frame
+        
         loop {
             // Read the frame number (assume it's a u64, 8 bytes)
             let mut frame_number_bytes = [0u8; 8];
@@ -161,13 +171,30 @@ async fn main() {
 
             let rgb_image = image::RgbImage::from_raw(width, height, buffer);
             if let Some(rgb_image) = rgb_image {
-                let image = DynamicImage::ImageRgb8(rgb_image);
-                let ocr_res = process_ocr(&image).await;
-                if let Ok(text) = ocr_res {
-                    log::info!("OCR result: {}", text);
+                let image = DynamicImage::ImageRgb8(rgb_image.clone());
+                
+                // Check image difference if we have a previous frame
+                let should_process = if let Some(prev_img) = &previous_image {
+                    let diff = images_differ(&rgb_image, prev_img, 0.05);
+                    log::debug!("Images differ: {}", diff);
+                    diff
                 } else {
-                    log::error!("Failed to process OCR: {}", ocr_res.unwrap_err());
+                    true // Always process first frame
+                };
+
+                if should_process {
+                    let ocr_res = process_ocr(&image).await;
+                    if let Ok(text) = ocr_res {
+                        let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+                        if let Err(e) = insert_ocr_entry(&timestamp, &text) {
+                            log::error!("Failed to insert OCR entry: {:?}", e);
+                        }
+                    } else {
+                        log::error!("Failed to process OCR: {}", ocr_res.unwrap_err());
+                    }
                 }
+
+                previous_image = Some(rgb_image);
             } else {
                 log::error!("Failed to open image");
             }
