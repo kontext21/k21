@@ -39,7 +39,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y pkg-config tesseract-ocr tesseract-ocr-eng libdbus-1-dev libclang-dev clang
+        sudo apt-get install -y pkg-config tesseract-ocr tesseract-ocr-eng libdbus-1-dev libclang-dev clang libxcb1-dev
     - name: Build
       run: cargo build --verbose
     - name: Run tests
