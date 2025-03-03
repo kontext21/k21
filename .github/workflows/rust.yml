@@ -36,10 +36,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - name: Install Tesseract
+    - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y tesseract-ocr libtesseract-dev libleptonica-dev
+        sudo apt-get install -y pkg-config tesseract-ocr tesseract-ocr-eng libdbus-1-dev libclang-dev clang
     - name: Build
       run: cargo build --verbose
     - name: Run tests
