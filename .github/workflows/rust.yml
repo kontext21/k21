@@ -32,3 +32,23 @@ jobs:
     - uses: actions/checkout@v4
     - name: Build
       run: cargo build --verbose
+  build-on-linux:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install Tesseract
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y tesseract-ocr libtesseract-dev libleptonica-dev
+    - name: Build
+      run: cargo build --verbose
+    - name: Run tests
+      run: cargo test --verbose
+    - name: Build release
+      run: cargo build --release
+    - name: Upload a Build Artifact
+      uses: actions/upload-artifact@v4.6.0
+      with:
+        name: linux build (release)
+        path: target/release/*
+        overwrite: true
