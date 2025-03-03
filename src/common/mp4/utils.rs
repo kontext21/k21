@@ -10,24 +10,46 @@ use std::path::PathBuf;
 use super::bitstream_converter::Mp4BitstreamConverter;
 use crate::common::image_sc::utils::calculate_threshold_exceeded_ratio;
 use crate::common::ocr::process_ocr;
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 
-pub async fn mp4_for_each_frame<P, F>(path: P, f: F) -> Result<()>
+
+pub async fn from_file_path_to_mp4_reader<P>(path: P) -> Result<std::vec::Vec<u8>>
+
 where
     P: AsRef<Path>,
-    F: Fn(u32, DynamicImage) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>,
-{
-    let total_start = Instant::now();
-    
+{    
     // File reading timing
     let file_start = Instant::now();
     let mut mp4 = Vec::new();
     let mut file = File::open(path)?;
     file.read_to_end(&mut mp4)?;
     log::info!("File reading took: {:?}", file_start.elapsed());
+    Ok(mp4)
+}
 
+pub async fn mp4_for_each_frame<P, F>(path: P, f: F) -> Result<()>
+where
+    P: AsRef<Path>,
+    F: Fn(u32, DynamicImage) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>,
+{
+    let mp4_reader = from_file_path_to_mp4_reader(path).await?;
+    mp4_for_each_frame_from_reader(mp4_reader, f).await?;
+
+    Ok(())
+}
+
+
+pub async fn mp4_for_each_frame_from_reader<R, F>(mp4_data: R, f: F) -> Result<()>
+where
+    R: AsRef<[u8]>,
+    F: Fn(u32, DynamicImage) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>,
+{    
+    let total_start = Instant::now();
+    
     // MP4 header parsing timing
     let header_start = Instant::now();
-    let mut mp4 = mp4::Mp4Reader::read_header(Cursor::new(&mp4), mp4.len() as u64)?;
+    let data = mp4_data.as_ref();
+    let mut mp4 = mp4::Mp4Reader::read_header(Cursor::new(data), data.len() as u64)?;
     log::info!("Header parsing took: {:?}", header_start.elapsed());
 
     // Track finding and decoder setup timing
@@ -222,7 +244,7 @@ where
     Ok(())
 }
 
-pub async fn process_mp4_frames(mp4_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn process_mp4_frames(mp4_path: &PathBuf) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     log::info!("Processing MP4 frames");
     mp4_for_each_frame(mp4_path, move |frame_idx, image| {
         Box::pin(async move {
@@ -242,4 +264,48 @@ pub async fn process_mp4_frames(mp4_path: &PathBuf) -> Result<(), Box<dyn std::e
     .await?;
     
     Ok(())
+}
+
+pub async fn process_mp4_reader(mp4_reader: Vec<u8>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    log::info!("Processing MP4 frames");
+    mp4_for_each_frame_from_reader(mp4_reader, move |frame_idx, image| {
+        Box::pin(async move {
+            log::info!("Processing frame {}", frame_idx);
+            let ocr_res = process_ocr(&image).await;
+            if let Ok(text) = ocr_res {
+                log::info!("Frame {} OCR result: {}", frame_idx, text);
+            } else {
+                log::error!(
+                    "Frame {} Failed to process OCR: {}",
+                    frame_idx,
+                    ocr_res.unwrap_err()
+                );
+            }
+        })
+    })
+    .await?;
+        
+    Ok(())
+}
+
+pub async fn process_mp4_from_base64(base64_data: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    log::info!("Processing MP4 from base64 data");
+    
+    // Decode base64 to binary data
+    let mp4_data = match STANDARD.decode(base64_data) {
+        Ok(data) => data,
+        Err(err) => {
+            log::error!("Failed to decode base64 data: {}", err);
+            // Use a standard error type that implements Error + Send + Sync
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Failed to decode base64 data: {}", err)
+            )));
+        }
+    };
+    
+    log::info!("Successfully decoded base64 data, size: {} bytes", mp4_data.len());
+    
+    // Process the decoded MP4 data
+    process_mp4_reader(mp4_data).await
 }
