@@ -44,47 +44,26 @@ jobs:
         path: target/release/*
         overwrite: true
 
-  build-docker-image:
+  build-and-push:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
+
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-    
-    - name: Login to GitHub Container Registry
-      uses: docker/login-action@v3
-      with:
-        registry: ghcr.io
-        username: ${{ github.repository_owner }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    
-    - name: Extract metadata for Docker
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: ghcr.io/${{ github.repository }}
-        tags: |
-          type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
-          type=sha,format=long
-          type=raw,value=pr-${{ github.event.pull_request.number }},enable=${{ github.event_name == 'pull_request' }}
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        file: ./Dockerfile.prod
-        push: true
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
-        cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache,mode=max
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Push buildcache separately (to prevent overriding the main image)
-      if: ${{ github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', 'main') }}
-      run: |
-        docker tag $(echo "${{ steps.meta.outputs.tags }}" | head -n 1) ghcr.io/${{ github.repository }}:buildcache
-        docker push ghcr.io/${{ github.repository }}:buildcache
+      - name: Build and tag Docker image
+        run: |
+          docker build -t ghcr.io/${{ github.repository }}:latest -f Dockerfile.prod .
+          docker tag ghcr.io/${{ github.repository }}:latest ghcr.io/${{ github.repository }}:${{ github.sha }}
+
+      - name: Push Docker image
+        run: |
+          docker push ghcr.io/${{ github.repository }}:latest
+          docker push ghcr.io/${{ github.repository }}:${{ github.sha }}
