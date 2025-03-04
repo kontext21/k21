@@ -13,6 +13,7 @@ use mp4::Mp4Reader;
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use std::io::Cursor;
+use std::sync::{Arc, Mutex};
 
 // Add this function to initialize the logger
 #[tokio::main]
@@ -21,7 +22,7 @@ async fn main() {
     init_logger_exe();
 
     log::info!("Starting server...");
-    
+
     let app = Router::new()
         .route("/ping", get(|| async { "pong" }))
         .route("/health", get(|| async { "healthy" }))
@@ -188,6 +189,31 @@ struct VideoBase64Request {
     base64_data: String,
 }
 
+// Instead, import it from the utils module
+use k21_screen::common::mp4::utils::ProcessingState;
+
+// Add a helper function to log the state
+pub fn log_processing_state(state: &ProcessingState) {
+    log::info!("Processing state contains {} frames", state.len());
+    
+    for (i, frame) in state.iter().enumerate() {
+        log::info!(
+            "Frame {}: timestamp={}, ocr_text={}",
+            i,
+            frame.timestamp,
+            frame.ocr_text
+        );
+    }
+}
+
+// Add this new response type
+#[derive(Serialize)]
+struct ProcessVideoResponse {
+    message: String,
+    success: bool,
+    result: Vec<serde_json::Value>,
+}
+
 async fn process_video_base64(Json(payload): Json<VideoBase64Request>) -> impl IntoResponse {
     log::info!("Processing base64 video data for frame extraction");
     let base64_data = &payload.base64_data;
@@ -206,9 +232,10 @@ async fn process_video_base64(Json(payload): Json<VideoBase64Request>) -> impl I
             log::error!("Failed to decode base64 data: {}", err);
             return (
                 StatusCode::BAD_REQUEST,
-                Json(ProcessResponse {
+                Json(ProcessVideoResponse {
                     message: format!("Failed to decode base64 data: {}", err),
                     success: false,
+                    result: Vec::new()  // Empty result for error case
                 })
             );
         }
@@ -216,34 +243,36 @@ async fn process_video_base64(Json(payload): Json<VideoBase64Request>) -> impl I
 
     log::info!("Successfully decoded {} bytes of video data", binary_data.len());
     
-    // Use an in-memory Cursor for the binary data
-    let mut cursor = Cursor::new(binary_data);
-
-    // Parse the MP4 file
-    let cursor_len = cursor.get_ref().len() as u64;
-    let mp4_reader = match Mp4Reader::read_header(&mut cursor, cursor_len) {
-        Ok(reader) => reader,
-        Err(err) => {
-            log::error!("Failed to parse MP4 data: {:?}", err);
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(ProcessResponse {
-                    message: format!("Invalid MP4 format: {:?}", err),
-                    success: false,
-                })
-            );
-        }
-    };
-
-    // Process the MP4 reader
-    match k21_screen::common::mp4::utils::process_mp4_from_base64(base64_part).await {
+    // Create shared state
+    let state = Arc::new(Mutex::new(ProcessingState::new()));
+    let state_clone = Arc::clone(&state);
+    
+    // Process the MP4 data with shared state
+    match k21_screen::common::mp4::utils::process_mp4_from_base64_with_state(
+        base64_part, 
+        state_clone
+    ).await {
         Ok(_) => {
-            log::info!("Successfully processed MP4 frames from base64 data");
+            // Access the final state
+            let final_state = state.lock().unwrap();
+            log_processing_state(&final_state);
+            
+            // Create a vector of frame data with timestamp and OCR text
+            let frames_data: Vec<serde_json::Value> = final_state.iter()
+                .map(|frame| {
+                    serde_json::json!({
+                        "time_id": frame.timestamp,
+                        "ocr_text": frame.ocr_text
+                    })
+                })
+                .collect();
+            
             (
                 StatusCode::OK,
-                Json(ProcessResponse {
-                    message: "Successfully processed video frames from base64 data".to_string(),
+                Json(ProcessVideoResponse {
+                    message: format!("Successfully processed {} video frames", final_state.len()),
                     success: true,
+                    result: frames_data
                 })
             )
         },
@@ -251,9 +280,10 @@ async fn process_video_base64(Json(payload): Json<VideoBase64Request>) -> impl I
             log::error!("Error processing MP4 frames: {}", err);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ProcessResponse {
+                Json(ProcessVideoResponse {
                     message: format!("Error processing video frames: {}", err),
                     success: false,
+                    result: Vec::new()  // Empty result for error case
                 })
             )
         }

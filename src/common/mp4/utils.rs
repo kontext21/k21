@@ -5,6 +5,7 @@ use openh264::formats::YUVSource;
 use std::fs::File;
 use std::io::{Cursor, Read};
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use std::path::PathBuf;
 use super::bitstream_converter::Mp4BitstreamConverter;
@@ -266,14 +267,34 @@ pub async fn process_mp4_frames(mp4_path: &PathBuf) -> Result<(), Box<dyn std::e
     Ok(())
 }
 
-pub async fn process_mp4_reader(mp4_reader: Vec<u8>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+// Add Debug derive to FrameData
+#[derive(Debug, Clone)]
+pub struct FrameData {
+    pub timestamp: String,
+    pub ocr_text: String,
+}
+
+pub type ProcessingState = Vec<FrameData>;
+
+pub async fn process_mp4_reader(mp4_reader: Vec<u8>, state: Option<Arc<Mutex<ProcessingState>>>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     log::info!("Processing MP4 frames");
     mp4_for_each_frame_from_reader(mp4_reader, move |frame_idx, image| {
+        // Clone state here for each frame
+        let state_clone = state.clone();
+        let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+
         Box::pin(async move {
             log::info!("Processing frame {}", frame_idx);
             let ocr_res = process_ocr(&image).await;
             if let Ok(text) = ocr_res {
                 log::info!("Frame {} OCR result: {}", frame_idx, text);
+                if let Some(state) = &state_clone {
+                    let mut state = state.lock().unwrap();
+                    state.push(FrameData {
+                        timestamp: timestamp,
+                        ocr_text: text,
+                    });
+                }
             } else {
                 log::error!(
                     "Frame {} Failed to process OCR: {}",
@@ -286,6 +307,31 @@ pub async fn process_mp4_reader(mp4_reader: Vec<u8>) -> Result<(), Box<dyn std::
     .await?;
         
     Ok(())
+}
+
+pub async fn process_mp4_from_base64_with_state(
+    base64_data: &str, 
+    state: Arc<Mutex<ProcessingState>>
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    log::info!("Processing MP4 from base64 data");
+    
+    // Decode base64 to binary data
+    let mp4_data = match STANDARD.decode(base64_data) {
+        Ok(data) => data,
+        Err(err) => {
+            log::error!("Failed to decode base64 data: {}", err);
+            // Use a standard error type that implements Error + Send + Sync
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Failed to decode base64 data: {}", err)
+            )));
+        }
+    };
+    
+    log::info!("Successfully decoded base64 data, size: {} bytes", mp4_data.len());
+    
+    // Process the decoded MP4 data
+    process_mp4_reader(mp4_data, Some(state)).await
 }
 
 pub async fn process_mp4_from_base64(base64_data: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -307,5 +353,5 @@ pub async fn process_mp4_from_base64(base64_data: &str) -> Result<(), Box<dyn st
     log::info!("Successfully decoded base64 data, size: {} bytes", mp4_data.len());
     
     // Process the decoded MP4 data
-    process_mp4_reader(mp4_data).await
+    process_mp4_reader(mp4_data, None).await
 }
