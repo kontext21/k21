@@ -62,28 +62,17 @@ jobs:
         username: ${{ github.repository_owner }}
         password: ${{ secrets.GITHUB_TOKEN }}
     
-    - name: Extract metadata for Docker
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: ghcr.io/${{ github.repository }}
-        tags: |
-          type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
-          type=sha,format=long
-
     - name: Build and push Docker image
+      id: meta
       uses: docker/build-push-action@v5
       with:
         context: .
         file: ./Dockerfile.prod
         push: ${{ github.event_name != 'pull_request' }}
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
-        cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache,mode=max
+        tags: ghcr.io/${{ github.repository }}:latest
 
     - name: Push buildcache separately (to prevent overriding the main image)
       if: ${{ github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', 'main') }}
       run: |
-        docker tag $(echo "${{ steps.meta.outputs.tags }}" | head -n 1) ghcr.io/${{ github.repository }}:buildcache
+        docker tag ghcr.io/${{ github.repository }}:latest ghcr.io/${{ github.repository }}:buildcache
         docker push ghcr.io/${{ github.repository }}:buildcache
