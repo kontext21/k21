@@ -18,7 +18,7 @@ pub async fn from_file_path_to_mp4_reader<P>(path: P) -> Result<std::vec::Vec<u8
 
 where
     P: AsRef<Path>,
-{    
+{
     // File reading timing
     let file_start = Instant::now();
     let mut mp4 = Vec::new();
@@ -47,6 +47,7 @@ where
 {    
     let total_start = Instant::now();
     
+    log::info!("Processing MP4 frames start of Reader");
     // MP4 header parsing timing
     let header_start = Instant::now();
     let data = mp4_data.as_ref();
@@ -332,11 +333,11 @@ pub async fn process_mp4_reader(mp4_reader: Vec<u8>, state: Option<Arc<Mutex<Pro
 }
 
 pub async fn process_mp4_from_base64_with_state(
-    base64_data: &str, 
+    base64_data: &str,
     state: Arc<Mutex<ProcessingState>>
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     log::info!("Processing MP4 from base64 data");
-    
+
     // Decode base64 to binary data
     let mp4_data = match STANDARD.decode(base64_data) {
         Ok(data) => data,

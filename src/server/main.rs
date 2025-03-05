@@ -4,6 +4,7 @@ use axum::{
     response::IntoResponse,
     http::StatusCode,
     Json,
+    extract::DefaultBodyLimit,
 };
 use k21_screen::common::{mp4::utils::process_mp4_frames, utils::init_logger_exe};
 use std::net::SocketAddr;
@@ -28,9 +29,10 @@ async fn main() {
         .route("/health", get(|| async { "healthy" }))
         .route("/process-video-path", post(process_video_path))
         .route("/upload", post(upload))
-        .route("/process-video-base64", post(process_video_base64));
+        .route("/process-video-base64", post(process_video_base64))
+        .layer(DefaultBodyLimit::max(1024 * 1024 * 1024)); // 1GB limit for testing
 
-    let port = std::env::var("PORT").unwrap_or_else(|_| "3000".to_string());
+    let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
     let addr = SocketAddr::from(([0, 0, 0, 0], port.parse().unwrap()));
 
     log::info!("Attempting to bind to port {}", port);
@@ -215,6 +217,7 @@ struct ProcessVideoResponse {
 }
 
 async fn process_video_base64(Json(payload): Json<VideoBase64Request>) -> impl IntoResponse {
+    log::info!("Received base64 data of length: {}", payload.base64_data.len());
     log::info!("Processing base64 video data for frame extraction");
     let base64_data = &payload.base64_data;
 

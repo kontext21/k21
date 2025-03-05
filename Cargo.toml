@@ -41,7 +41,8 @@ base64 = "0.21"
 mp4parse = "0.12.1"
 # OCR
 rusty-tesseract = { git = "https://github.com/louis030195/rusty-tesseract.git", branch = "main" }
-
+tower = "0.4"
+tower-http = { version = "0.4", features = ["limit"] }
 
 
 [target.'cfg(target_os = "windows")'.dependencies]
