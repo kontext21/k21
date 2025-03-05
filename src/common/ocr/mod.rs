@@ -3,7 +3,6 @@
 mod ocr_mac;
 #[cfg(target_os = "windows")]
 mod ocr_win;
-
 #[cfg(target_os = "linux")]
 mod ocr_linux;
 

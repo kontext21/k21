@@ -53,8 +53,12 @@ where
     let mut mp4 = mp4::Mp4Reader::read_header(Cursor::new(data), data.len() as u64)?;
     log::info!("Header parsing took: {:?}", header_start.elapsed());
 
-    // Track finding and decoder setup timing
-    let setup_start = Instant::now();
+    // Get MP4 duration in seconds
+    let duration = mp4.duration();
+    let duration_seconds = duration.as_secs_f64();
+    log::info!("MP4 duration: {:?}", duration_seconds);
+
+    // Calculate frame step based on track sample count and duration
     let track = mp4
         .tracks()
         .iter()
@@ -62,6 +66,16 @@ where
         .ok_or_else(|| anyhow!("Must exist"))?
         .1;
     let track_id = track.track_id();
+    let sample_count = track.sample_count();
+    let step = if duration_seconds > 0.0 {
+        (sample_count as f64 / duration_seconds).ceil() as usize
+    } else {
+        1 // Default to processing every frame if duration is zero
+    };
+    log::info!("Processing with step size: {}, total samples: {}", step, sample_count);
+
+    // Track finding and decoder setup timing
+    let setup_start = Instant::now();
     let decoder_options = DecoderConfig::new()
         .debug(false)
         .flush_after_decode(Flush::NoFlush);
@@ -107,6 +121,7 @@ where
     let mut previous_image: Option<Vec<u8>> = None;
     let mut image_diff_time = std::time::Duration::new(0, 0);
 
+    // for i in (1..=track.sample_count()).step_by(step) {
     for i in 1..=track.sample_count() {
         // Read sample timing
         let read_sample_start = Instant::now();
@@ -122,11 +137,18 @@ where
         let convert_start = Instant::now();
         bitstream_converter.convert_packet(&sample.bytes, &mut buffer);
         convert_time += convert_start.elapsed();
+        
 
         // Decoding timing
         let decode_start = Instant::now();
         match decoder.decode(&buffer) {
             Ok(Some(yuv)) => {
+                        // Skip frames based on step size (early exit)
+                if i % step as u32 != 0 {
+                    continue;
+                }
+                log::info!("Processing frame {}", i);
+
                 decode_time += decode_start.elapsed();
 
                 // Time YUV to luma conversion
@@ -165,15 +187,15 @@ where
                 if should_process {
                     // Callback timing
                     f(frame_idx, current_dynamic_image.clone()).await;
-                } else {
+                    previous_image = Some(current_luma_image.to_vec());
+                                    } else {
                     log::info!("Frame {} not processed", frame_idx);
-                }
+                                    }
                 callback_time += callback_start.elapsed();
                 frame_idx += 1;
 
                 // Update previous image
-                previous_image = Some(current_luma_image.to_vec());
-            }
+               }
             Ok(None) => {
                 decode_time += decode_start.elapsed();
                 continue;
