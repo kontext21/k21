@@ -13,10 +13,13 @@ log = "0.4.25"
 env_logger = "0.11.6"
 chrono = "0.4"
 humantime = "2.1.0"
+clap = { version = "4.5.30", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1"
+rusty-tesseract = { git = "https://github.com/louis030195/rusty-tesseract.git", branch = "main" }
+
+
 
 [target.'cfg(target_os = "macos")'.dependencies]
 libc = "=0.2.164"
 cidre = { git = "https://github.com/yury/cidre", rev = "efb9e060c6f8edc48551365c2e80d3e8c6887433", features = ["ns", "cv", "vn"] }
-
-
-

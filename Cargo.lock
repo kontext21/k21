@@ -1422,6 +1422,7 @@ dependencies = [
  "base64",
  "chrono",
  "cidre",
+ "clap",
  "env_logger 0.11.6",
  "humantime",
  "image",
@@ -1429,6 +1430,9 @@ dependencies = [
  "log",
  "mp4",
  "openh264",
+ "rusty-tesseract",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
