@@ -1185,7 +1185,6 @@ dependencies = [
  "tokio",
  "tower 0.4.13",
  "tower-http",
- "windows 0.58.0",
  "xcap",
 ]
 
@@ -1433,6 +1432,7 @@ dependencies = [
  "rusty-tesseract",
  "serde",
  "serde_json",
+ "windows 0.58.0",
 ]
 
 [[package]]
