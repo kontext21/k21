@@ -1,0 +1,51 @@
+# Stage 1: Build the Rust app
+FROM --platform=${BUILDPLATFORM} rust:1.84 AS builder
+
+# Install required dependencies (    tesseract-ocr-eng  maybe not needed^)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config \
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    libdbus-1-dev \
+    libclang-dev \
+    clang \
+    && rm -rf /var/lib/apt/lists/*
+
+# Verify tesseract is installed and in PATH
+RUN which tesseract || (echo "Tesseract not found in PATH" && exit 1)
+RUN tesseract --version || (echo "Tesseract command failed" && exit 1)
+
+WORKDIR /usr/src/app
+COPY . .
+
+# Build the application with cross-compilation if needed
+RUN cargo build --release --bin k21-server
+
+# Stage 2: Create a minimal runtime image
+FROM --platform=${TARGETPLATFORM} debian:bookworm-slim
+
+# Install only the necessary runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libdbus-1-3 \
+    ca-certificates \
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    libleptonica-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Verify tesseract is installed and in PATH
+RUN which tesseract || (echo "Tesseract not found in PATH" && exit 1)
+RUN tesseract --version || (echo "Tesseract command failed" && exit 1)
+
+WORKDIR /app
+
+# Copy only the built binary from the builder stage
+COPY --from=builder /usr/src/app/target/release/k21-server /app/
+
+# Set environment variables
+ENV HOST=0.0.0.0
+ENV PORT=8080
+EXPOSE 8080
+
+# Use the simplified server for testing
+CMD ["./k21-server"] 

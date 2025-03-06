@@ -1,11 +1,10 @@
 use clap::Parser;
 use image::{DynamicImage, RgbImage};
-use k21_screen::common::image_sc::utils::images_differ;
-use k21_screen::common::mp4::utils::mp4_for_each_frame;
-use k21_screen::common::ocr::process_ocr;
-use log::LevelFilter;
+use mylib::image_sc::utils::images_differ;
+use mylib::mp4_pr::utils::mp4_for_each_frame;
+use mylib::ocr::process_ocr;
+use mylib::logger::utils::init_logger;
 use std::env;
-use std::io::Write;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::Arc;
@@ -27,32 +26,6 @@ struct Cli {
     mp4: Option<PathBuf>,
     #[arg(long, help = "get image from stdin (from screen)")]
     stdin: bool,
-}
-
-pub fn init_logger(name: impl Into<String>) {
-    let crate_name = name.into().replace('-', "_");
-
-    env_logger::builder()
-        .parse_default_env()
-        .filter(Some(&crate_name), LevelFilter::Trace)
-        .format(move |f, rec| {
-            let now = humantime::format_rfc3339_millis(std::time::SystemTime::now());
-            let module = rec.module_path().unwrap_or("<unknown>");
-            let line = rec.line().unwrap_or(u32::MIN);
-            let level = rec.level();
-
-            writeln!(
-                f,
-                "[{} {} {} {}:{}] {}",
-                level,
-                crate_name,
-                now,
-                module,
-                line,
-                rec.args()
-            )
-        })
-        .init();
 }
 
 #[tokio::main]
