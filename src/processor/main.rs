@@ -1,9 +1,9 @@
 use clap::Parser;
 use image::{DynamicImage, RgbImage};
-use k21_screen::common::image_sc::utils::images_differ;
-use k21_screen::common::mp4::utils::mp4_for_each_frame;
-use k21_screen::common::ocr::process_ocr;
-use k21_screen::common::utils::init_logger;
+use mylib::image_sc::utils::images_differ;
+use mylib::mp4_pr::utils::mp4_for_each_frame;
+use mylib::ocr::process_ocr;
+use mylib::logger::utils::init_logger;
 use std::env;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};

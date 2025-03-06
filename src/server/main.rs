@@ -6,7 +6,7 @@ use axum::{
     Json,
     extract::DefaultBodyLimit,
 };
-use k21_screen::common::{mp4::utils::process_mp4_frames, utils::init_logger_exe};
+use mylib::mp4_pr::utils::process_mp4_frames;
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
 use serde::{Deserialize, Serialize};
@@ -15,6 +15,7 @@ use mp4::Mp4Reader;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use std::io::Cursor;
 use std::sync::{Arc, Mutex};
+// Or import the entire module
 
 // Add this function to initialize the logger
 #[tokio::main]
@@ -192,7 +193,7 @@ struct VideoBase64Request {
 }
 
 // Instead, import it from the utils module
-use k21_screen::common::mp4::utils::ProcessingState;
+use mylib::{mp4_pr::utils::ProcessingState, logger::utils::init_logger_exe};
 
 // Add a helper function to log the state
 pub fn log_processing_state(state: &ProcessingState) {
@@ -217,6 +218,8 @@ struct ProcessVideoResponse {
 }
 
 async fn process_video_base64(Json(payload): Json<VideoBase64Request>) -> impl IntoResponse {
+
+    mylib::my_function();
     log::info!("Received base64 data of length: {}", payload.base64_data.len());
     log::info!("Processing base64 video data for frame extraction");
     let base64_data = &payload.base64_data;
@@ -251,7 +254,7 @@ async fn process_video_base64(Json(payload): Json<VideoBase64Request>) -> impl I
     let state_clone = Arc::clone(&state);
     
     // Process the MP4 data with shared state
-    match k21_screen::common::mp4::utils::process_mp4_from_base64_with_state(
+    match mylib::mp4_pr::utils::process_mp4_from_base64_with_state(
         base64_part, 
         state_clone
     ).await {

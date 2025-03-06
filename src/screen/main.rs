@@ -2,7 +2,7 @@ use anyhow::{Error, Result};
 use clap::Parser;
 use glob::glob;
 use image::DynamicImage;
-use k21_screen::common::utils::init_logger_exe;
+use mylib::logger::utils::init_logger_exe;
 use std::fs;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};

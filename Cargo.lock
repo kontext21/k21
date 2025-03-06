@@ -1164,7 +1164,6 @@ dependencies = [
  "axum",
  "base64",
  "chrono",
- "cidre",
  "clap",
  "ctrlc",
  "dirs",
@@ -1173,11 +1172,11 @@ dependencies = [
  "humantime",
  "image",
  "imageproc",
- "libc",
  "log",
  "minimp4",
  "mp4",
  "mp4parse",
+ "mylib",
  "openh264",
  "rusqlite",
  "rusty-tesseract",
@@ -1413,6 +1412,23 @@ dependencies = [
  "log",
  "num-traits",
  "static_assertions",
+]
+
+[[package]]
+name = "mylib"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "chrono",
+ "cidre",
+ "env_logger 0.11.6",
+ "humantime",
+ "image",
+ "libc",
+ "log",
+ "mp4",
+ "openh264",
 ]
 
 [[package]]

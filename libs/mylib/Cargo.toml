@@ -1,0 +1,22 @@
+[package]
+name = "mylib"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+image = "0.25.5"
+mp4 = "0.14.0"
+anyhow = "1.0.95"
+openh264 = "0.7.2"
+base64 = "0.21"
+log = "0.4.25"
+env_logger = "0.11.6"
+chrono = "0.4"
+humantime = "2.1.0"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "=0.2.164"
+cidre = { git = "https://github.com/yury/cidre", rev = "efb9e060c6f8edc48551365c2e80d3e8c6887433", features = ["ns", "cv", "vn"] }
+
+
+

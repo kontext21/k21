@@ -9,8 +9,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use std::path::PathBuf;
 use super::bitstream_converter::Mp4BitstreamConverter;
-use crate::common::image_sc::utils::calculate_threshold_exceeded_ratio;
-use crate::common::ocr::process_ocr;
+use crate::image_sc::utils::calculate_threshold_exceeded_ratio;
+use crate::ocr::process_ocr;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 
 
