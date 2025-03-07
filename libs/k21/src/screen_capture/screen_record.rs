@@ -46,7 +46,7 @@ impl ScreenRecorder {
         self.frame_count += 1;
     }
 
-    pub fn save(&mut self, p: &Path, fps: u32) {
+    pub fn save(&mut self, p: &Path, fps: f32) {
         use minimp4::Mp4Muxer;
         use std::io::{Cursor, Read, Seek, SeekFrom};
 
@@ -65,7 +65,7 @@ impl ScreenRecorder {
             false,
             "Screen recording",
         );
-        mp4muxer.write_video_with_fps(&self.buf, fps);
+        mp4muxer.write_video_with_fps(&self.buf, fps as u32);
         mp4muxer.close();
 
         video_buffer.seek(SeekFrom::Start(0)).unwrap();

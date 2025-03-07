@@ -56,7 +56,7 @@ async fn main() {
         stdout: cli.stdout,
         save_screenshot: cli.save_screenshot,
         save_video: cli.save_video,
-        max_frames: Some(10),
+        max_frames: None,
     };
 
     run_screen_capture(config).await;
