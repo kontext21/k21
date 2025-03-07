@@ -11,11 +11,11 @@ members = [
 ]
 
 [[bin]]
-name = "k21-screen"
+name = "k21-screen-cli"
 path = "src/screen/main.rs"
 
 [[bin]]
-name = "k21-processor"
+name = "k21-processor-cli"
 path = "src/processor/main.rs"
 
 [[bin]]
@@ -25,13 +25,11 @@ path = "src/server/main.rs"
 [dependencies]
 anyhow = "1.0.95"
 image = "0.25.5"
-xcap = "0.3.2"
 tokio = { version = "1.15", features = ["full", "tracing"] }
 clap = { version = "4.5.30", features = ["derive"] }
 log = "0.4.25"
 env_logger = "0.11.6"
 humantime = "2.1.0"
-glob = "0.3.2"
 imageproc = "0.25.0"
 minimp4 = "0.1.2"
 openh264 = "0.7.2"

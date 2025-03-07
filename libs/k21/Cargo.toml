@@ -16,6 +16,11 @@ humantime = "2.1.0"
 clap = { version = "4.5.30", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1"
+xcap = "0.3.2"
+minimp4 = "0.1.2"
+tokio = { version = "1.15", features = ["full", "tracing"] }
+ctrlc = "3.4.5"
+glob = "0.3.2"
 rusty-tesseract = { git = "https://github.com/louis030195/rusty-tesseract.git", branch = "main" }
 
 

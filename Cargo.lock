@@ -1168,7 +1168,6 @@ dependencies = [
  "ctrlc",
  "dirs",
  "env_logger 0.11.6",
- "glob",
  "humantime",
  "image",
  "imageproc",
@@ -1186,7 +1185,6 @@ dependencies = [
  "tower 0.4.13",
  "tower-http",
  "windows 0.58.0",
- "xcap",
 ]
 
 [[package]]
@@ -1423,16 +1421,21 @@ dependencies = [
  "chrono",
  "cidre",
  "clap",
+ "ctrlc",
  "env_logger 0.11.6",
+ "glob",
  "humantime",
  "image",
  "libc",
  "log",
+ "minimp4",
  "mp4",
  "openh264",
  "rusty-tesseract",
  "serde",
  "serde_json",
+ "tokio",
+ "xcap",
 ]
 
 [[package]]
