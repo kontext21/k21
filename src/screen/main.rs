@@ -1,6 +1,6 @@
 use clap::Parser;
-use mylib::logger::utils::init_logger_exe;
-use mylib::screen_capture::utils::{run_screen_capture, ScreenCaptureConfig};
+use k21::logger::utils::init_logger_exe;
+use k21::screen_capture::utils::{run_screen_capture, ScreenCaptureConfig};
 
 #[derive(Parser)]
 #[command(version, about = "A CLI tool to handle screen refresh rates", long_about = None)]

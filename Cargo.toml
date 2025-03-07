@@ -7,7 +7,7 @@ default-run = "k21-server"
 
 [workspace]
 members = [
-    "libs/mylib"
+    "libs/k21"
 ]
 
 [[bin]]
@@ -48,4 +48,4 @@ mp4 = "0.14.0"
 rusty-tesseract = { git = "https://github.com/louis030195/rusty-tesseract.git", branch = "main" }
 tower = "0.4"
 tower-http = { version = "0.4", features = ["limit"] }
-mylib = { path = "libs/mylib" }
+k21 = { path = "libs/k21" }

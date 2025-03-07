@@ -1,9 +1,9 @@
 use clap::Parser;
 use image::{DynamicImage, RgbImage};
-use mylib::image_sc::utils::images_differ;
-use mylib::mp4_pr::utils::mp4_for_each_frame;
-use mylib::ocr::process_ocr;
-use mylib::logger::utils::init_logger;
+use k21::image_sc::utils::images_differ;
+use k21::mp4_pr::utils::mp4_for_each_frame;
+use k21::ocr::process_ocr;
+use k21::logger::utils::init_logger;
 use std::env;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
@@ -103,7 +103,7 @@ async fn main() {
         log::info!("Total characters: {}", char_counter.load(Ordering::SeqCst));
         log::info!("Time taken: {:.2?}", elapsed);
     } else if cli.stdin {
-        let mut stdin = BufReader::new(io::stdin());
+        let mut stdin: BufReader<io::Stdin> = BufReader::new(io::stdin());
         let mut previous_image: Option<RgbImage> = None; // Store previous frame
         
         loop {
