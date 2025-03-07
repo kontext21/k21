@@ -53,7 +53,7 @@ pub async fn run_screen_capture_and_do_ocr_default() -> Vec<OcrResult> {
         stdout: false,
         save_screenshot: false,
         save_video: false,
-        max_frames: Some(100),
+        max_frames: Some(1),
     };
     run_screen_capture_and_do_ocr(config).await
 }
@@ -61,9 +61,6 @@ pub async fn run_screen_capture_and_do_ocr_default() -> Vec<OcrResult> {
 pub async fn run_screen_capture_and_do_ocr(config: ScreenCaptureConfig) -> Vec<OcrResult> {
     log::info!("Starting capture at {} fps", config.fps);
     let monitor_id = get_primary_monitor_id();
-
-    // setup ctrl-c handler
-    // let running = setup_ctrl_c_handler();
     
     // delete old screenshots
     cleanup_old_screenshots();
