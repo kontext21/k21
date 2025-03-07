@@ -3,7 +3,7 @@ use glob::glob;
 use image::DynamicImage;
 use std::fs;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
+// use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime};
@@ -53,7 +53,7 @@ pub async fn run_screen_capture_and_do_ocr_default() -> Vec<OcrResult> {
         stdout: false,
         save_screenshot: false,
         save_video: false,
-        max_frames: Some(1),
+        max_frames: Some(100),
     };
     run_screen_capture_and_do_ocr(config).await
 }
@@ -63,7 +63,7 @@ pub async fn run_screen_capture_and_do_ocr(config: ScreenCaptureConfig) -> Vec<O
     let monitor_id = get_primary_monitor_id();
 
     // setup ctrl-c handler
-    let running = setup_ctrl_c_handler();
+    // let running = setup_ctrl_c_handler();
     
     // delete old screenshots
     cleanup_old_screenshots();
@@ -75,7 +75,6 @@ pub async fn run_screen_capture_and_do_ocr(config: ScreenCaptureConfig) -> Vec<O
 
     // Start screenshot capture task
     let screenshot_task = spawn_screenshot_task(
-        running.clone(),
         config.fps,
         config.max_frames,
         monitor_id,
@@ -168,7 +167,7 @@ pub async fn run_screen_capture(config: ScreenCaptureConfig) {
     log::info!("Starting capture at {} fps", config.fps);
 
     // setup ctrl-c handler
-    let running = setup_ctrl_c_handler();
+    // let running = setup_ctrl_c_handler();
 
     // get primary monitor
     let monitor_id = get_primary_monitor_id();
@@ -181,7 +180,6 @@ pub async fn run_screen_capture(config: ScreenCaptureConfig) {
 
     // Start screenshot capture task
     let screenshot_task = spawn_screenshot_task(
-        running.clone(),
         config.fps,
         config.max_frames,
         monitor_id,
@@ -194,7 +192,6 @@ pub async fn run_screen_capture(config: ScreenCaptureConfig) {
 
     process_captured_frames(
         &config,
-        running,
         &mut screenshot_rx,
         &mut screen_record,
         total_fps_in_chunk,
@@ -208,18 +205,18 @@ pub async fn run_screen_capture(config: ScreenCaptureConfig) {
     }
 }
 
-fn setup_ctrl_c_handler() -> Arc<AtomicBool> {
-    let running = Arc::new(AtomicBool::new(true));
-    let r = running.clone();
+// fn setup_ctrl_c_handler() -> Arc<AtomicBool> {
+//     let running = Arc::new(AtomicBool::new(true));
+//     let r = running.clone();
 
-    ctrlc::set_handler(move || {
-        log::warn!("Ctrl-C received, stopping...");
-        r.store(false, Ordering::SeqCst);
-    })
-    .expect("Error setting Ctrl-C handler");
+//     ctrlc::set_handler(move || {
+//         log::warn!("Ctrl-C received, stopping...");
+//         r.store(false, Ordering::SeqCst);
+//     })
+//     .expect("Error setting Ctrl-C handler");
 
-    running
-}
+//     running
+// }
 
 fn get_primary_monitor_id() -> u32 {
     Monitor::all()
@@ -239,7 +236,6 @@ fn cleanup_old_screenshots() {
 }
 
 fn spawn_screenshot_task(
-    running: Arc<AtomicBool>,
     fps: f32,
     max_frames: Option<u64>,
     monitor_id: u32,
@@ -249,8 +245,7 @@ fn spawn_screenshot_task(
         let interval = Duration::from_secs_f32(1.0 / fps);
         async move {
             let mut frame_counter: u64 = 1;
-            while running.load(Ordering::SeqCst) && 
-                  (max_frames.is_none() || frame_counter <= max_frames.unwrap()) {
+            while max_frames.is_none() || frame_counter <= max_frames.unwrap() {
                 
                 let capture_start = Instant::now();
                 let image = get_screenshot(monitor_id).await.unwrap();
@@ -277,7 +272,6 @@ fn spawn_screenshot_task(
 
 async fn process_captured_frames(
     config: &ScreenCaptureConfig,
-    running: Arc<AtomicBool>,
     screenshot_rx: &mut tokio::sync::mpsc::Receiver<(u64, DynamicImage)>,
     screen_record: &mut screen_record::ScreenRecorder,
     total_fps_in_chunk: u64,
@@ -285,7 +279,7 @@ async fn process_captured_frames(
 ) {
     let mut exit_condition: bool = true;
     
-    while running.load(Ordering::SeqCst) && exit_condition {
+    while exit_condition {
         if let Some((frame_number, image)) = screenshot_rx.recv().await {
             log::info!("frame_number {}", frame_number);
             
