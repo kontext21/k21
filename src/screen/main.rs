@@ -42,7 +42,7 @@ async fn main() {
     init_logger_exe();
 
     let cli = Cli::parse();
-    
+
     // init tokio runtime
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -57,6 +57,7 @@ async fn main() {
         save_screenshot: cli.save_screenshot,
         save_video: cli.save_video,
         max_frames: None,
+        record_length_in_seconds: 0,
     };
 
     run_screen_capture(config).await;

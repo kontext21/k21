@@ -10,11 +10,14 @@ use std::time::{Duration, Instant, SystemTime};
 use tokio::io::{self, AsyncWriteExt};
 use tokio::sync::mpsc::channel;
 use xcap::Monitor;
+use crate::image_sc::utils::images_differ;
+
 use super::screen_record;
+use chrono;
 
 #[derive(Debug, Clone)]
 pub struct OcrResult {
-    pub timestamp: SystemTime,
+    pub timestamp: String,
     pub frame_number: u64,
     pub text: String,
 }
@@ -26,6 +29,17 @@ pub struct ScreenCaptureConfig {
     pub save_screenshot: bool,
     pub save_video: bool,
     pub max_frames: Option<u64>,
+    pub record_length_in_seconds: u64,
+}
+
+impl ScreenCaptureConfig {
+    /// Computes the maximum number of frames based on fps and recording length
+    pub fn compute_max_frames(&self) -> u64 {
+        match self.max_frames {
+            Some(frames) => frames,
+            None => (self.fps as f64 * self.record_length_in_seconds as f64).ceil() as u64
+        }
+    }
 }
 
 pub async fn get_screenshot(monitor_id: u32) -> Result<DynamicImage> {
@@ -47,29 +61,36 @@ pub async fn get_screenshot(monitor_id: u32) -> Result<DynamicImage> {
 }
 
 pub async fn run_screen_capture_and_do_ocr_default() -> Vec<OcrResult> {
+    // Reduce logging frequency to avoid stdout contention
+    log::debug!("Starting default screen capture with OCR");
+    
     let config = ScreenCaptureConfig {
         fps: 1.0,
         video_chunk_duration: 1,
         stdout: false,
         save_screenshot: false,
         save_video: false,
-        max_frames: Some(1),
+        max_frames: None,
+        record_length_in_seconds: 1,
     };
+    config.compute_max_frames(); //ugly fix for now
+    
     run_screen_capture_and_do_ocr(config).await
 }
 
 pub async fn run_screen_capture_and_do_ocr(config: ScreenCaptureConfig) -> Vec<OcrResult> {
-    log::info!("Starting capture at {} fps", config.fps);
+    log::debug!("Starting capture at {} fps", config.fps);
     let monitor_id = get_primary_monitor_id();
     
     // delete old screenshots
-    cleanup_old_screenshots();
+    // cleanup_old_screenshots();
 
-    let (screenshot_tx, mut screenshot_rx) = channel(512);
-    
     // Create shared OCR results list
     let ocr_results = Arc::new(Mutex::new(Vec::<OcrResult>::new()));
 
+    // Start screenshot capture task with a bounded channel to prevent overwhelming
+    let (screenshot_tx, mut screenshot_rx) = channel(32); // Reduced buffer size
+    
     // Start screenshot capture task
     let screenshot_task = spawn_screenshot_task(
         config.fps,
@@ -81,24 +102,31 @@ pub async fn run_screen_capture_and_do_ocr(config: ScreenCaptureConfig) -> Vec<O
     // Process screenshots with OCR
     let ocr_tasks = process_screenshots_with_ocr(
         &mut screenshot_rx, 
-        config.max_frames.unwrap(), 
+        config.max_frames.unwrap_or(1), // Provide default if None
         ocr_results.clone(),
     ).await;
     
     // Wait for screenshot capture to complete
-    screenshot_task.await.unwrap();
+    if let Err(e) = screenshot_task.await {
+        log::error!("Screenshot task failed: {:?}", e);
+    }
     
     // Wait for all OCR tasks to complete
-    for task in ocr_tasks {
+    for (i, task) in ocr_tasks.into_iter().enumerate() {
         if let Err(e) = task.await {
-            log::error!("OCR task failed: {}", e);
+            log::error!("OCR task {} failed: {:?}", i, e);
         }
     }
     
-    let results = ocr_results.lock().unwrap();
-    log::info!("Collected {} OCR results", results.len());
+    // Use a scope to ensure the mutex is released
+    let results = {
+        let guard = ocr_results.lock().unwrap();
+        guard.clone()
+    };
     
-    results.clone()
+    log::debug!("Collected {} OCR results", results.len());
+    
+    results
 }
 
 async fn process_screenshots_with_ocr(
@@ -109,36 +137,55 @@ async fn process_screenshots_with_ocr(
     let mut frame_count = 0;
     let mut tasks = Vec::new();
     
-    while frame_count < max_frames {
+    let mut previous_image: Option<DynamicImage> = None;
+
+    while frame_count <= max_frames {
         if let Some((frame_number, image)) = screenshot_rx.recv().await {
-            log::info!("Processing frame {} with OCR", frame_number);
+            frame_count = frame_number;
+            log::debug!("Processing frame {} with OCR", frame_number);
             
             // Clone Arc for the task
             let results_arc = ocr_results.clone();
-            let should_collect = true;
-                        
+            
+            // Check if images are similar before proceeding
+            let should_process = if let Some(prev_img) = &previous_image {
+                images_differ(&image.to_rgb8(), &prev_img.to_rgb8(), 0.1)
+            } else {
+                true
+            };
+            
+            if !should_process {
+                log::debug!("Images similar, skipping OCR for frame {}", frame_number);
+                continue;
+            }
+            
+            // Clone image for the OCR task
+            let image_clone = image.clone();
+            
             // Process OCR in a separate task to avoid blocking
             let task = tokio::task::spawn(async move {
                 // Use the OCR module from k21/src/ocr
-                match crate::ocr::process_ocr(&image).await {
+                match crate::ocr::process_ocr(&image_clone).await {
                     Ok(text) => {
                         if !text.is_empty() {
-                            log::info!("OCR result for frame {}: {}", frame_number, text);
+                            log::debug!("OCR result for frame {}: {}", frame_number, text);
                             
-                            // Store the OCR result if collection is enabled
-                            if should_collect {
-                                let result = OcrResult {
-                                    timestamp: SystemTime::now(),
-                                    frame_number,
-                                    text,
-                                };
-                                
-                                // Lock the mutex and add the result
-                                if let Ok(mut results) = results_arc.lock() {
-                                    results.push(result);
-                                } else {
-                                    log::error!("Failed to lock OCR results mutex");
-                                }
+                            // Format current time as a human-readable string
+                            let now = SystemTime::now();
+                            let datetime = chrono::DateTime::<chrono::Local>::from(now);
+                            let timestamp = datetime.format("%Y-%m-%d %H:%M:%S%.3f").to_string();
+                            
+                            let result = OcrResult {
+                                timestamp,
+                                frame_number,
+                                text,
+                            };
+                            
+                            // Use a scope to minimize lock duration
+                            if let Ok(mut results) = results_arc.lock() {
+                                results.push(result);
+                            } else {
+                                log::error!("Failed to lock OCR results mutex");
                             }
                         } else {
                             log::debug!("No text detected in frame {}", frame_number);
@@ -146,13 +193,12 @@ async fn process_screenshots_with_ocr(
                     },
                     Err(e) => log::error!("OCR error on frame {}: {}", frame_number, e),
                 }
-                
-                log::debug!("OCR completed for frame {}", frame_number);
             });
             
             tasks.push(task);
-            frame_count += 1;
+            previous_image = Some(image.clone());
         } else {
+            log::debug!("Screenshot channel closed, stopping OCR processing");
             break;
         }
     }
@@ -162,9 +208,6 @@ async fn process_screenshots_with_ocr(
 
 pub async fn run_screen_capture(config: ScreenCaptureConfig) {
     log::info!("Starting capture at {} fps", config.fps);
-
-    // setup ctrl-c handler
-    // let running = setup_ctrl_c_handler();
 
     // get primary monitor
     let monitor_id = get_primary_monitor_id();
@@ -242,19 +285,31 @@ fn spawn_screenshot_task(
         let interval = Duration::from_secs_f32(1.0 / fps);
         async move {
             let mut frame_counter: u64 = 1;
-            while max_frames.is_none() || frame_counter <= max_frames.unwrap() {
+            while max_frames.map_or(true, |max| frame_counter <= max) {
                 
                 let capture_start = Instant::now();
-                let image = get_screenshot(monitor_id).await.unwrap();
-                if let Err(e) = screenshot_tx.send((frame_counter, image)).await {
-                    log::error!("Error: {}", e.to_string());
-                    break;
+                
+                match get_screenshot(monitor_id).await {
+                    Ok(image) => {
+                        // Use try_send to avoid blocking if receiver is slow
+                        if let Err(e) = screenshot_tx.send((frame_counter, image)).await {
+                            log::error!("Failed to send screenshot: {}", e);
+                            break;
+                        }
+                    },
+                    Err(e) => {
+                        log::error!("Failed to capture screenshot: {}", e);
+                        // Continue to next iteration instead of breaking
+                        tokio::time::sleep(interval).await;
+                        continue;
+                    }
                 }
+                
                 let capture_duration = capture_start.elapsed();
                 frame_counter += 1;
 
                 if let Some(diff) = interval.checked_sub(capture_duration) {
-                    log::info!("sleeping for {:?}", diff);
+                    log::debug!("Sleeping for {:?}", diff);
                     tokio::time::sleep(diff).await;
                 } else {
                     log::warn!(
@@ -263,6 +318,8 @@ fn spawn_screenshot_task(
                     );
                 }
             }
+            
+            log::debug!("Screenshot task completed after {} frames", frame_counter - 1);
         }
     })
 }

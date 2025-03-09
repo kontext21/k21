@@ -84,7 +84,7 @@ async fn main() {
             let counter = counter_clone.clone();
             Box::pin(async move {
                 let ocr_res = process_ocr(&image).await;
-                if let Ok(text) = ocr_res {
+                 if let Ok(text) = ocr_res {
                     log::info!("Frame {} OCR result: {}", frame_idx, text);
                     counter.fetch_add(text.len() as i32, Ordering::SeqCst);
                 } else {
