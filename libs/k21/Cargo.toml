@@ -22,6 +22,7 @@ tokio = { version = "1.15", features = ["full", "tracing"] }
 ctrlc = "3.4.5"
 glob = "0.3.2"
 rusty-tesseract = { git = "https://github.com/louis030195/rusty-tesseract.git", branch = "main" }
+tempfile = "3.8.0"
 
 
 

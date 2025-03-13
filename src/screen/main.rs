@@ -52,12 +52,13 @@ async fn main() {
 
     let config = ScreenCaptureConfig {
         fps: cli.fps,
-        video_chunk_duration: cli.video_chunk_duration,
+        video_chunk_duration_in_seconds: cli.video_chunk_duration,
         stdout: cli.stdout,
         save_screenshot: cli.save_screenshot,
         save_video: cli.save_video,
         max_frames: None,
         record_length_in_seconds: 0,
+        ..Default::default()
     };
 
     run_screen_capture(config).await;

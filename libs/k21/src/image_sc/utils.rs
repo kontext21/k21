@@ -17,7 +17,7 @@ fn calculate_image_difference(rgb1: &RgbImage, rgb2: &RgbImage) -> f32 {
 
     let total_pixels = (rgb1.width() * rgb1.height()) as u64;
     let mut different_pixels = 0u64;
-    
+
     for (p1, p2) in rgb1.pixels().zip(rgb2.pixels()) {
         // Consider pixels different if any RGB component differs by more than 10
         if (p1[0].abs_diff(p2[0]) > 10) ||
@@ -26,9 +26,9 @@ fn calculate_image_difference(rgb1: &RgbImage, rgb2: &RgbImage) -> f32 {
             different_pixels += 1;
         }
     }
-    
+
     different_pixels as f32 / total_pixels as f32
-} 
+}
 
 pub fn calculate_threshold_exceeded_ratio(img1: &[u8], img2: &[u8], tolerance: f32) -> f32 {
     if img1.len() != img2.len() {
