@@ -50,16 +50,3 @@ impl Processor for OCRProcessor {
         "OCRProcessor: Extracts text from images".to_string()
     }
 }
-
-/// Concrete BarcodeProcessor Implementation
-#[derive(Debug)]
-struct BarcodeProcessor;
-impl Processor for BarcodeProcessor {
-    fn process(&self, input: &str) -> String {
-        format!("Barcode detected in: {}", input)
-    }
-
-    fn info(&self) -> String {
-        "BarcodeProcessor: Reads barcodes from images".to_string()
-    }
-}
