@@ -4,20 +4,15 @@ use openh264::decoder::{DecodedYUV, Decoder, DecoderConfig, Flush};
 use openh264::formats::YUVSource;
 use std::fs::File;
 use std::io::{Cursor, Read};
-use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use std::path::PathBuf;
 use super::bitstream_converter::Mp4BitstreamConverter;
 use crate::image_sc::utils::calculate_threshold_exceeded_ratio;
-use crate::ocr::process_ocr;
+use crate::image2text::ocr::process_ocr;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 
-
-pub async fn from_file_path_to_mp4_reader<P>(path: P) -> Result<std::vec::Vec<u8>>
-
-where
-    P: AsRef<Path>,
+pub async fn from_file_path_to_mp4_reader(path: &PathBuf) -> Result<std::vec::Vec<u8>>
 {
     // File reading timing
     let file_start = Instant::now();
@@ -28,24 +23,17 @@ where
     Ok(mp4)
 }
 
-pub async fn mp4_for_each_frame<P, F>(path: P, f: F) -> Result<()>
-where
-    P: AsRef<Path>,
-    F: Fn(u32, DynamicImage) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>,
+pub async fn mp4_for_each_frame(path: &PathBuf, state: Option<Arc<Mutex<ProcessingState>>>) -> Result<Vec<FrameData>>
 {
     let mp4_reader = from_file_path_to_mp4_reader(path).await?;
-    mp4_for_each_frame_from_reader(mp4_reader, f).await?;
-
-    Ok(())
+    mp4_for_each_frame_from_reader(&mp4_reader, state).await
 }
 
 
-pub async fn mp4_for_each_frame_from_reader<R, F>(mp4_data: R, f: F) -> Result<()>
-where
-    R: AsRef<[u8]>,
-    F: Fn(u32, DynamicImage) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>,
-{    
+pub async fn mp4_for_each_frame_from_reader(mp4_data: &[u8], state: Option<Arc<Mutex<ProcessingState>>>) -> Result<Vec<FrameData>>
+{
     let total_start = Instant::now();
+    let mut results = Vec::new();
     
     log::info!("Processing MP4 frames start of Reader");
     let data = mp4_data.as_ref();
@@ -117,7 +105,8 @@ where
                 };
 
                 if should_process {
-                    f(frame_idx, current_dynamic_image.clone()).await;
+                    let result = process_frame_callback(frame_idx, current_dynamic_image.clone(), state.clone()).await;
+                    results.push(result);
                     previous_image = Some(current_luma_image.to_vec());
                 } else {
                     log::info!("Frame {} not processed", frame_idx);
@@ -131,12 +120,13 @@ where
         }
     }
 
+
     for yuv in decoder.flush_remaining()? {
         log::info!("Flushing frame {frame_idx}");
-        
+
         let current_luma = yuv_to_luma(&yuv)?;
         let current_luma_image = current_luma.as_slice();
-        
+
         let (width, height) = yuv.dimensions();
         let current_dynamic_image = luma_to_image(current_luma_image, width as u32, height as u32)?;
 
@@ -149,7 +139,8 @@ where
         };
 
         if should_process {
-            f(frame_idx, current_dynamic_image.clone()).await;
+            let result = process_frame_callback(frame_idx, current_dynamic_image.clone(), state.clone()).await;
+            results.push(result);
         }
         frame_idx += 1;
 
@@ -157,24 +148,24 @@ where
     }
 
     log::info!("Total execution time: {:?}", total_start.elapsed());
-    
-    Ok(())
+
+    Ok(results)
 }
 
 // Extract the image conversion functions to public methods
 pub fn yuv_to_luma(yuv: &DecodedYUV) -> Result<Vec<u8>> {
     let (width, height) = yuv.dimensions();
     let stride = yuv.strides().0; // Get Y plane stride
-    
+
     // Create a new buffer for the luma data with correct dimensions
     let mut luma_data = Vec::with_capacity(width * height);
-    
+
     // Copy data from Y plane, accounting for stride if needed
     for y in 0..height {
         let row_start = y * stride;
         luma_data.extend_from_slice(&yuv.y()[row_start..row_start + width]);
     }
-    
+
     Ok(luma_data)
 }
 
@@ -184,26 +175,12 @@ pub fn luma_to_image(luma: &[u8], width: u32, height: u32) -> Result<DynamicImag
     Ok(DynamicImage::ImageLuma8(luma_img))
 }
 
-pub async fn process_mp4_frames(mp4_path: &PathBuf) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+pub async fn process_mp4_frames(mp4_path: &PathBuf) -> Result<Vec<FrameData>> {
     log::info!("Processing MP4 frames");
-    mp4_for_each_frame(mp4_path, move |frame_idx, image| {
-        Box::pin(async move {
-            log::info!("Processing frame {}", frame_idx);
-            let ocr_res = process_ocr(&image).await;
-            if let Ok(text) = ocr_res {
-                log::info!("Frame {} OCR result: {}", frame_idx, text);
-            } else {
-                log::error!(
-                    "Frame {} Failed to process OCR: {}",
-                    frame_idx,
-                    ocr_res.unwrap_err()
-                );
-            }
-        })
-    })
+    let results = mp4_for_each_frame(mp4_path, None)
     .await?;
-    
-    Ok(())
+
+    Ok(results)
 }
 
 // Add Debug derive to FrameData
@@ -215,43 +192,49 @@ pub struct FrameData {
 
 pub type ProcessingState = Vec<FrameData>;
 
-pub async fn process_mp4_reader(mp4_reader: Vec<u8>, state: Option<Arc<Mutex<ProcessingState>>>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+pub async fn process_mp4_reader(mp4_reader: Vec<u8>, state: Option<Arc<Mutex<ProcessingState>>>) -> Result<Vec<FrameData>> {
     log::info!("Processing MP4 frames");
-    mp4_for_each_frame_from_reader(mp4_reader, move |frame_idx, image| {
-        // Clone state here for each frame
-        let state_clone = state.clone();
-        let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let results = mp4_for_each_frame_from_reader(&mp4_reader, state.clone()).await?;
+    Ok(results)
+}
 
-        Box::pin(async move {
-            log::info!("Processing frame {}", frame_idx);
-            let ocr_res = process_ocr(&image).await;
-            if let Ok(text) = ocr_res {
-                log::info!("Frame {} OCR result: {}", frame_idx, text);
-                if let Some(state) = &state_clone {
-                    let mut state = state.lock().unwrap();
-                    state.push(FrameData {
-                        timestamp: timestamp,
-                        ocr_text: text,
-                    });
-                }
-            } else {
-                log::error!(
-                    "Frame {} Failed to process OCR: {}",
-                    frame_idx,
-                    ocr_res.unwrap_err()
-                );
-            }
-        })
-    })
-    .await?;
-        
-    Ok(())
+async fn process_frame_callback(frame_idx: u32, image: DynamicImage, state: Option<Arc<Mutex<ProcessingState>>>) -> FrameData {
+{
+    let state_clone = state.clone();
+    let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+
+    log::info!("Processing frame {}", frame_idx);
+    let ocr_res = process_ocr(&image).await;
+    let frame_data = FrameData {
+        timestamp: timestamp.clone(),
+        ocr_text: match &ocr_res {
+            Ok(text) => text.clone(),
+            Err(_) => String::from("OCR Error"),
+        }
+    };
+
+    if let Ok(text) = ocr_res {
+        log::info!("Frame {} OCR result: {}", frame_idx, text);
+        if let Some(state) = &state_clone {
+            let mut state = state.lock().unwrap();
+            state.push(frame_data.clone());
+        }
+    } else {
+        log::error!(
+            "Frame {} Failed to process OCR: {}",
+            frame_idx,
+            ocr_res.unwrap_err()
+        );
+    }
+    
+    frame_data
+    }
 }
 
 pub async fn process_mp4_from_base64_with_state(
     base64_data: &str,
     state: Arc<Mutex<ProcessingState>>
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<Vec<FrameData>> {
     log::info!("Processing MP4 from base64 data");
 
     // Decode base64 to binary data
@@ -259,11 +242,8 @@ pub async fn process_mp4_from_base64_with_state(
         Ok(data) => data,
         Err(err) => {
             log::error!("Failed to decode base64 data: {}", err);
-            // Use a standard error type that implements Error + Send + Sync
-            return Err(Box::new(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Failed to decode base64 data: {}", err)
-            )));
+            // Convert to anyhow::Error
+            return Err(anyhow::anyhow!("Failed to decode base64 data: {}", err));
         }
     };
     
@@ -273,7 +253,7 @@ pub async fn process_mp4_from_base64_with_state(
     process_mp4_reader(mp4_data, Some(state)).await
 }
 
-pub async fn process_mp4_from_base64(base64_data: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+pub async fn process_mp4_from_base64(base64_data: &str) -> Result<Vec<FrameData>> {
     log::info!("Processing MP4 from base64 data");
     
     // Decode base64 to binary data
@@ -282,10 +262,7 @@ pub async fn process_mp4_from_base64(base64_data: &str) -> Result<(), Box<dyn st
         Err(err) => {
             log::error!("Failed to decode base64 data: {}", err);
             // Use a standard error type that implements Error + Send + Sync
-            return Err(Box::new(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Failed to decode base64 data: {}", err)
-            )));
+            return Err(anyhow::anyhow!("Failed to decode base64 data: {}", err));
         }
     };
     

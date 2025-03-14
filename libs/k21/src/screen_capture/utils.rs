@@ -179,7 +179,7 @@ async fn process_screenshots_with_ocr(
             // Process OCR in a separate task to avoid blocking
             let task = tokio::task::spawn(async move {
                 // Use the OCR module from k21/src/ocr
-                match crate::ocr::process_ocr(&image_clone).await {
+                match crate::image2text::ocr::process_ocr(&image_clone).await {
                     Ok(text) => {
                         if !text.is_empty() {
                             log::debug!("OCR result for frame {}: {}", frame_number, text);

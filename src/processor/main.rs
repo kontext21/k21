@@ -2,7 +2,7 @@ use clap::Parser;
 use image::{DynamicImage, RgbImage};
 use k21::image_sc::utils::images_differ;
 use k21::mp4_pr::utils::mp4_for_each_frame;
-use k21::ocr::process_ocr;
+use k21::image2text::ocr::process_ocr;
 use k21::logger::utils::init_logger;
 use std::env;
 use std::path::PathBuf;
@@ -75,27 +75,10 @@ async fn main() {
             log::error!("Failed to open image: {:?}", image.err());
         }
     } else if cli.mp4.is_some() {
-        let char_counter = Arc::new(AtomicI32::new(0));
-        let counter_clone = char_counter.clone();
-        
+        let char_counter = Arc::new(AtomicI32::new(0));        
         let start_time = std::time::Instant::now();
         
-        mp4_for_each_frame(&cli.mp4.unwrap(), move |frame_idx, image| {
-            let counter = counter_clone.clone();
-            Box::pin(async move {
-                let ocr_res = process_ocr(&image).await;
-                 if let Ok(text) = ocr_res {
-                    log::info!("Frame {} OCR result: {}", frame_idx, text);
-                    counter.fetch_add(text.len() as i32, Ordering::SeqCst);
-                } else {
-                    log::error!(
-                        "Frame {} Failed to process OCR: {}",
-                        frame_idx,
-                        ocr_res.unwrap_err()
-                    );
-                }
-            })
-        })
+        mp4_for_each_frame(&cli.mp4.unwrap(), None)
         .await
         .unwrap();
         
