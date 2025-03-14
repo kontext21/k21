@@ -72,7 +72,8 @@
 //     STANDARD.encode(&buffer)
 // }
 
-// async fn call_openrouter(api_key: &str, model: &str, image: &DynamicImage) -> String {
+// async fn call_openrouter(api_key: &str, model: &str, image: &DynamicImage, prompt: &str) -> String {
+//     let base64_str = dynamic_image_to_base64(image);
 //     let client = reqwest::Client::new();
     
 //     // Create headers
@@ -80,7 +81,6 @@
 //     headers.insert("Authorization", HeaderValue::from_str(&format!("Bearer {}", api_key)).unwrap());
 //     headers.insert("Content-Type", HeaderValue::from_static("application/json"));
 
-//     let base64_str = dynamic_image_to_base64(image);
 //     println!("Base64 string: {}", base64_str);
 //     // JSON payload
 //     let body = serde_json::json!({
@@ -89,7 +89,7 @@
 //             {
 //                 "role": "user",
 //                 "content": [
-//                     { "type": "text", "text": "What is in this image?" },
+//                     { "type": "text", "text": prompt },
 //                     { 
 //                         "type": "image_url",
 //                         "image_url": {
@@ -120,24 +120,28 @@
 //     "Failed to extract text".to_string()
 // }
 
-// async fn handle_request(Json(payload): Json<UserRequest>) -> String {
-//     for message in &payload.messages {
-//         for content in &message.content {
-//             if let Content::Image { image_url, .. } = content {
-//                 let extracted_text = call_openrouter(&payload.api_key, &payload.model, &image_url.url).await;
-//                 return extracted_text;
-//             }
-//         }
-//     }
+// // async fn handle_request(Json(payload): Json<UserRequest>) -> String {
+// //     for message in &payload.messages {
+// //         for content in &message.content {
+// //             if let Content::Image { image_url, .. } = content {
+// //                 let extracted_text = call_openrouter(&payload.api_key, &payload.model, &image_url.url).await;
+// //                 return extracted_text;
+// //             }
+// //         }
+// //     }
 
-//     "No image found".to_string()
+// //     "No image found".to_string()
+// // }
+
+// async fn process_image_vision(image: DynamicImage, api_key: &str, model: &str, prompt: Option<&str>) -> String {
+    
+//     let final_prompt = if let Some(prompt) = prompt {
+//         prompt
+//     } else {
+//         "What is in this image?"
+//     };
+
+//     call_openrouter(api_key, model, &image, &final_prompt).await
 // }
 
-// // async fn process_image_vision(image: DynamicImage, api_key: &str, model: &str, prompt: Option<&str>) -> String {
-    
-// //     let final_prompt = if let Some(prompt) = prompt {
-// //         prompt
-// //     } else {
-// //         "What is in this image?"
-// //     };
-// // }
+// aw

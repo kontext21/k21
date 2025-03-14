@@ -220,7 +220,7 @@ async fn process_screenshots_with_ocr(
     tasks
 }
 
-pub async fn record_screen_capture_images(
+pub async fn capture_screen_images(
     fps: Option<f32>,
     duration: Option<u64>,
     output_dir_screenshot: Option<&String>,
@@ -231,11 +231,11 @@ pub async fn record_screen_capture_images(
         None => return Err(anyhow::anyhow!("No output directory provided for video recording")),
     };
 
-    record(fps, duration, None, None, Some(true), None, Some(&absolute_path)).await;
+    capture(fps, duration, None, None, Some(true), None, Some(&absolute_path)).await;
     Ok(())
 }
 
-pub async fn record_screen_capture_video(
+pub async fn capture_screen_video(
     fps: Option<f32>,
     duration: Option<u64>,
     video_chunk_duration_in_seconds: Option<u64>,
@@ -250,11 +250,11 @@ pub async fn record_screen_capture_video(
 
     log::info!("Absolute path: {}", absolute_path.display());
 
-    record(fps, duration, Some(true), video_chunk_duration_in_seconds, None, Some(&absolute_path), None).await;
+    capture(fps, duration, Some(true), video_chunk_duration_in_seconds, None, Some(&absolute_path), None).await;
     Ok(())
 }
 
-pub async fn record(
+pub async fn capture(
     fps: Option<f32>,
     duration: Option<u64>,
     dump_video: Option<bool>,
@@ -298,7 +298,7 @@ pub async fn run_screen_capture(config: ScreenCaptureConfig) {
         screenshot_tx,
     );
 
-    let mut screen_record = screen_record::ScreenRecorder::new(monitor_id);
+    let mut screen_record = screen_record::ScreenCapturer::new(monitor_id);
     let total_fps_in_chunk = config.fps as u64 * config.video_chunk_duration_in_seconds;
     let mut chunk_number = 0;
 
@@ -386,7 +386,7 @@ fn spawn_screenshot_task(
 async fn process_captured_frames(
     config: &ScreenCaptureConfig,
     screenshot_rx: &mut tokio::sync::mpsc::Receiver<(u64, DynamicImage)>,
-    screen_record: &mut screen_record::ScreenRecorder,
+    screen_record: &mut screen_record::ScreenCapturer,
     total_fps_in_chunk: u64,
     chunk_number: &mut u64,
 ) {
@@ -462,7 +462,7 @@ async fn send_frame_to_stdout(frame_number: u64, image: &DynamicImage) {
     stdout.flush().await.unwrap(); // Ensure it's sent
 }
 
-fn save_video_chunk(screen_record: &mut screen_record::ScreenRecorder, chunk_number: &mut u64, fps: f32, output_dir_video: &Path) {
+fn save_video_chunk(screen_record: &mut screen_record::ScreenCapturer, chunk_number: &mut u64, fps: f32, output_dir_video: &Path) {
     // save video chunk to disk with unique name using the provided output directory
     let path = output_dir_video.join(format!("output-{}.mp4", chunk_number));
     screen_record.save(&path, fps);
@@ -576,7 +576,7 @@ mod tests {
         let temp_path = "./test-video".to_string();
         
         // Record a very short video (0.5 second) at 2 fps
-        let result = record_screen_capture_video(
+        let result = capture_screen_video(
             Some(1.0),           // fps
             Some(13),            // duration in seconds
             Some(5),             // chunk duration
@@ -595,7 +595,7 @@ mod tests {
         let temp_path = "/Users/ferzu/k21/libs/k21/".to_string();
         
         // Record a very short video (0.5 second) at 2 fps
-        let result = record_screen_capture_images(
+        let result = capture_screen_images(
             Some(1.0),           // fps
             Some(10),            // duration in seconds
             Some(&temp_path),    // output directory
@@ -620,7 +620,7 @@ mod tests {
         let nonexistent_path = "/path/that/definitely/does/not/exist/12345abcde".to_string();
         
         // Attempt to record with a nonexistent output directory
-        let result = record_screen_capture_images(
+        let result = capture_screen_images(
             Some(1.0),                // fps
             Some(10),                 // duration in seconds
             Some(&nonexistent_path),   // Nonexistent output directory

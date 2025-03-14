@@ -3,14 +3,14 @@ use openh264::encoder::Encoder;
 use std::path::Path;
 use xcap::Monitor;
 
-pub struct ScreenRecorder {
+pub struct ScreenCapturer {
     monitor_id: u32,
     encoder: Encoder,
     buf: Vec<u8>,
     frame_count: u32,
 }
 
-impl ScreenRecorder {
+impl ScreenCapturer {
     pub fn new(monitor_id: u32) -> Self {
         Self {
             monitor_id,
@@ -63,7 +63,7 @@ impl ScreenRecorder {
             monitor.width() as i32,
             monitor.height() as i32,
             false,
-            "Screen recording",
+            "Screen capturer",
         );
         mp4muxer.write_video_with_fps(&self.buf, fps as u32);
         mp4muxer.close();
