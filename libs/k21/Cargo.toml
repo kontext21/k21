@@ -26,8 +26,6 @@ tempfile = "3.8.0"
 axum = "0.7.4"
 reqwest = { version = "0.11", features = ["json", "blocking"] }
 
-
-
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.58", features = [
   "Graphics_Imaging",
@@ -39,3 +37,4 @@ windows = { version = "0.58", features = [
 [target.'cfg(target_os = "macos")'.dependencies]
 libc = "=0.2.164"
 cidre = { git = "https://github.com/yury/cidre", rev = "efb9e060c6f8edc48551365c2e80d3e8c6887433", features = ["ns", "cv", "vn"] }
+# cidre = { git = "https://github.com/yury/cidre" }
