@@ -219,7 +219,6 @@ struct ProcessVideoResponse {
 
 async fn process_video_base64(Json(payload): Json<VideoBase64Request>) -> impl IntoResponse {
 
-    k21::my_function();
     log::info!("Received base64 data of length: {}", payload.base64_data.len());
     log::info!("Processing base64 video data for frame extraction");
     let base64_data = &payload.base64_data;

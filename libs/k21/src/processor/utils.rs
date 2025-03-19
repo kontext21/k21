@@ -26,12 +26,6 @@ pub async fn perform_ocr_on_image_from_path(path: &str) -> Result<FrameData> {
     perform_ocr_on_image(&image).await
 }
 
-pub async fn perform_ocr_on_video_from_path(path: &str) -> Result<FrameData> {
-    let path_buf = std::path::PathBuf::from(path);
-    let image = load_image_from_path(&path_buf).unwrap();
-    perform_ocr_on_image(&image).await
-}
-
 pub async fn perform_ocr_on_video_path(path: &str) -> Result<Vec<FrameData>> {
     let path_buf = std::path::PathBuf::from(path);
     let results = mp4_for_each_frame(&path_buf, None).await?;

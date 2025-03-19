@@ -51,6 +51,30 @@ impl Default for ScreenCaptureConfig {
 }
 
 impl ScreenCaptureConfig {
+    /// Creates a new ScreenCaptureConfig with the specified parameters
+    pub fn new(
+        fps: f32,
+        record_length_in_seconds: u64,
+        save_screenshot: bool,
+        save_video: bool,
+        output_dir_video: Option<PathBuf>,
+        output_dir_screenshot: Option<PathBuf>,
+        video_chunk_duration_in_seconds: Option<u64>,
+    ) -> Self {
+        let mut config = Self {
+            fps,
+            record_length_in_seconds,
+            save_screenshot,
+            save_video,
+            output_dir_video,
+            output_dir_screenshot,
+            video_chunk_duration_in_seconds: video_chunk_duration_in_seconds.unwrap_or(60),
+            ..Default::default()
+        };
+        config.compute_max_frames();
+        config
+    }
+
     /// Computes the maximum number of frames based on fps and recording length
     /// and updates the max_frames field
     pub fn compute_max_frames(&mut self) {
