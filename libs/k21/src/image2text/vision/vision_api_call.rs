@@ -50,13 +50,6 @@ async fn image_path_to_base64(image_path: &str) -> String {
     }
 }
 
-// fn dynamic_image_to_base64(image: &DynamicImage) -> String {
-//     let mut buffer = Vec::new();
-//     image.write_to(&mut std::io::Cursor::new(&mut buffer), image::ImageFormat::Png)
-//         .expect("Failed to encode image to PNG");
-//     STANDARD.encode(&buffer)
-// }
-
 async fn call_openrouter(url: &str, api_key: &str, model: &str, base64_str: &String, prompt: &str) -> String {
     let client = reqwest::Client::new();
     

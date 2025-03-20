@@ -1,7 +1,7 @@
-pub mod image_sc;
+pub mod image_utils;
 pub mod mp4_pr;
 pub mod image2text;
 pub mod logger;
-pub mod signal;
-pub mod screen_capture;
-pub mod processor;
+pub mod capture;
+pub mod process;
+pub mod common;

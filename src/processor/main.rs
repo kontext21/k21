@@ -1,9 +1,9 @@
 use clap::Parser;
 use image::{DynamicImage, RgbImage};
-use k21::image_sc::utils::images_differ;
+use k21::image_utils::images_differ_rgb;
 use k21::mp4_pr::utils::mp4_for_each_frame;
-use k21::image2text::ocr::process_ocr;
-use k21::logger::utils::init_logger;
+use k21::image2text::process_ocr;
+use k21::logger::init_logger_exe;
 use std::env;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
@@ -30,14 +30,7 @@ struct Cli {
 
 #[tokio::main]
 async fn main() {
-    init_logger(
-        env::current_exe()
-            .unwrap()
-            .file_stem()
-            .unwrap()
-            .to_str()
-            .unwrap(),
-    );
+    init_logger_exe();
     let cli = Cli::parse();
 
     if let Err(e) = create_database() {
@@ -131,7 +124,7 @@ async fn main() {
                 
                 // Check image difference if we have a previous frame
                 let should_process = if let Some(prev_img) = &previous_image {
-                    let diff = images_differ(&rgb_image, prev_img, 0.05);
+                    let diff = images_differ_rgb(&rgb_image, prev_img, 0.05);
                     log::debug!("Images differ: {}", diff);
                     diff
                 } else {

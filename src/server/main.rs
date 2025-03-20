@@ -193,7 +193,7 @@ struct VideoBase64Request {
 }
 
 // Instead, import it from the utils module
-use k21::{mp4_pr::utils::ProcessingState, logger::utils::init_logger_exe};
+use k21::{mp4_pr::utils::ProcessingState, logger::init_logger_exe};
 
 // Add a helper function to log the state
 pub fn log_processing_state(state: &ProcessingState) {

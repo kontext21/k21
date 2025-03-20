@@ -1,18 +1,23 @@
-use anyhow::{anyhow, Result};
-use image::DynamicImage;
-use openh264::decoder::{DecodedYUV, Decoder, DecoderConfig, Flush};
-use openh264::formats::YUVSource;
+// Standard library imports
 use std::fs::File;
 use std::io::{Cursor, Read};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use std::path::PathBuf;
-use super::bitstream_converter::Mp4BitstreamConverter;
-use crate::image_sc::utils::calculate_threshold_exceeded_ratio;
-use crate::image2text::ocr::process_ocr;
-use base64::{Engine as _, engine::general_purpose::STANDARD};
 
-pub async fn from_file_path_to_mp4_reader(path: &PathBuf) -> Result<std::vec::Vec<u8>>
+use anyhow::{anyhow, Result};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
+use image::DynamicImage;
+use openh264::decoder::{Decoder, DecoderConfig, Flush};
+
+use super::bitstream_converter::Mp4BitstreamConverter;
+use crate::image2text::process_ocr;
+use crate::image_utils::convert_yuv_to_dynamic_image;
+use crate::image_utils::should_process_frame_luma;
+// Module-level constant
+const THRESHOLD_VALUE: f32 = 0.05;
+
+async fn from_file_path_to_mp4_reader(path: &PathBuf) -> Result<std::vec::Vec<u8>>
 {
     // File reading timing
     let file_start = Instant::now();
@@ -28,7 +33,6 @@ pub async fn mp4_for_each_frame(path: &PathBuf, state: Option<Arc<Mutex<Processi
     let mp4_reader = from_file_path_to_mp4_reader(path).await?;
     mp4_for_each_frame_from_reader(&mp4_reader, state).await
 }
-
 
 pub async fn mp4_for_each_frame_from_reader(mp4_data: &[u8], state: Option<Arc<Mutex<ProcessingState>>>) -> Result<Vec<FrameData>>
 {
@@ -90,26 +94,14 @@ pub async fn mp4_for_each_frame_from_reader(mp4_data: &[u8], state: Option<Arc<M
                 }
                 log::info!("Processing frame {}", i);
 
-                let current_luma = yuv_to_luma(&yuv)?;
-                let current_luma_image = current_luma.as_slice();
+                let (current_dynamic_image, current_luma) = convert_yuv_to_dynamic_image(&yuv)?;
                 
-                let (width, height) = yuv.dimensions();
-                let current_dynamic_image = luma_to_image(current_luma_image, width as u32, height as u32)?;
-
-                let should_process = if let Some(prev_image) = &previous_image {
-                    let result = calculate_threshold_exceeded_ratio(
-                        current_luma_image, prev_image.as_slice(), 0.05);
-                    result > 0.05
-                } else {
-                    true // Always process the first frame
-                };
-
-                if should_process {
+                if should_process_frame_luma(&current_luma, previous_image.as_deref(), THRESHOLD_VALUE) {
                     let result = process_frame_callback(frame_idx, current_dynamic_image.clone(), state.clone()).await;
                     results.push(result);
-                    previous_image = Some(current_luma_image.to_vec());
+                    previous_image = Some(current_luma.to_vec());
                 } else {
-                    log::info!("Frame {} not processed", frame_idx);
+                    log::info!("Frame {} skipped - no significant changes", frame_idx);
                 }
                 frame_idx += 1;
             }
@@ -120,59 +112,24 @@ pub async fn mp4_for_each_frame_from_reader(mp4_data: &[u8], state: Option<Arc<M
         }
     }
 
-
     for yuv in decoder.flush_remaining()? {
         log::info!("Flushing frame {frame_idx}");
 
-        let current_luma = yuv_to_luma(&yuv)?;
-        let current_luma_image = current_luma.as_slice();
+        let (current_dynamic_image, current_luma) = convert_yuv_to_dynamic_image(&yuv)?;
 
-        let (width, height) = yuv.dimensions();
-        let current_dynamic_image = luma_to_image(current_luma_image, width as u32, height as u32)?;
-
-        let should_process = if let Some(prev_image) = &previous_image {
-            let result = calculate_threshold_exceeded_ratio(
-                current_luma_image, prev_image.as_slice(), 0.05);
-            result > 0.05
-        } else {
-            true // Always process the first frame
-        };
-
-        if should_process {
+        if should_process_frame_luma(&current_luma, previous_image.as_deref(), THRESHOLD_VALUE) {
             let result = process_frame_callback(frame_idx, current_dynamic_image.clone(), state.clone()).await;
             results.push(result);
+            previous_image = Some(current_luma.to_vec());
+        } else {
+            log::info!("Frame {} skipped - no significant changes", frame_idx);
         }
         frame_idx += 1;
-
-        previous_image = Some(current_luma_image.to_vec());
     }
 
     log::info!("Total execution time: {:?}", total_start.elapsed());
 
     Ok(results)
-}
-
-// Extract the image conversion functions to public methods
-pub fn yuv_to_luma(yuv: &DecodedYUV) -> Result<Vec<u8>> {
-    let (width, height) = yuv.dimensions();
-    let stride = yuv.strides().0; // Get Y plane stride
-
-    // Create a new buffer for the luma data with correct dimensions
-    let mut luma_data = Vec::with_capacity(width * height);
-
-    // Copy data from Y plane, accounting for stride if needed
-    for y in 0..height {
-        let row_start = y * stride;
-        luma_data.extend_from_slice(&yuv.y()[row_start..row_start + width]);
-    }
-
-    Ok(luma_data)
-}
-
-pub fn luma_to_image(luma: &[u8], width: u32, height: u32) -> Result<DynamicImage> {
-    let luma_img = image::GrayImage::from_raw(width, height, luma.to_vec())
-        .ok_or(anyhow::format_err!("Failed to create GrayImage"))?;
-    Ok(DynamicImage::ImageLuma8(luma_img))
 }
 
 pub async fn process_mp4_frames(mp4_path: &PathBuf) -> Result<Vec<FrameData>> {
@@ -183,7 +140,6 @@ pub async fn process_mp4_frames(mp4_path: &PathBuf) -> Result<Vec<FrameData>> {
     Ok(results)
 }
 
-// Add Debug derive to FrameData
 #[derive(Debug, Clone)]
 pub struct FrameData {
     pub timestamp: String,
