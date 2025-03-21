@@ -6,25 +6,11 @@ use std::time::{Duration, Instant};
 use tokio::io::{self, AsyncWriteExt};
 use tokio::sync::mpsc::channel;
 
-use super::screen_record::get_primary_monitor;
 use crate::common::to_verified_path;
 use crate::capture::screen_record;
+use super::screen_record::get_screenshot;
 
 use super::ScreenCaptureConfig;
-
-pub async fn get_screenshot() -> Result<DynamicImage> {
-    let image = std::thread::spawn(move || -> Result<DynamicImage> {
-        let monitor = get_primary_monitor();
-        let image = monitor
-            .capture_image()
-            .map_err(anyhow::Error::from)
-            .map(DynamicImage::ImageRgba8)?;
-        Ok(image)
-    })
-    .join()
-    .unwrap()?;
-    Ok(image)
-}
 
 pub async fn capture(
     fps: Option<f32>,

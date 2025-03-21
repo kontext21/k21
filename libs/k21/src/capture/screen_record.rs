@@ -2,7 +2,7 @@ use image::DynamicImage;
 use openh264::encoder::Encoder;
 use std::path::Path;
 use xcap::Monitor;
-
+use anyhow::Result;
 pub struct ScreenCapturer {
     encoder: Encoder,
     buf: Vec<u8>,
@@ -86,7 +86,7 @@ fn get_monitor(monitor_id: u32) -> Monitor {
         .unwrap()
 }
 
-pub fn get_primary_monitor_id() -> u32 {
+fn get_primary_monitor_id() -> u32 {
     Monitor::all()
         .unwrap()
         .iter()
@@ -97,4 +97,18 @@ pub fn get_primary_monitor_id() -> u32 {
 
 pub fn get_primary_monitor() -> Monitor {
     get_monitor(get_primary_monitor_id())
+}
+
+pub async fn get_screenshot() -> Result<DynamicImage> {
+    let image = std::thread::spawn(move || -> Result<DynamicImage> {
+        let monitor = get_primary_monitor();
+        let image = monitor
+            .capture_image()
+            .map_err(anyhow::Error::from)
+            .map(DynamicImage::ImageRgba8)?;
+        Ok(image)
+    })
+    .join()
+    .unwrap()?;
+    Ok(image)
 }
