@@ -163,7 +163,6 @@ async fn process_captured_frames(
 
     while exit_condition {
         if let Some((frame_number, image)) = screenshot_rx.recv().await {
-            log::info!("frame_number {}", frame_number);
 
             if config.record_length_in_seconds > 0 && frame_number >= total_frames {
                 log::info!("Reached maximum frame count ({}), stopping capture", &total_frames);

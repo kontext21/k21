@@ -71,7 +71,6 @@ async fn main() {
         log::info!("Total characters: {}", char_counter.load(Ordering::SeqCst));
         log::info!("Time taken: {:.2?}", elapsed);
     } else if cli.stdin {
-        log::info!("Starting stdin mode");
         let mut stdin: BufReader<io::Stdin> = BufReader::new(io::stdin());
         let mut previous_image: Option<RgbImage> = None;
         
@@ -123,8 +122,6 @@ async fn main() {
                 } else {
                     true // Always process first frame
                 };
-
-                log::info!("Here");
 
                 if should_process {
                     let ocr_res = process_ocr(&image).await;
