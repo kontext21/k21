@@ -1,13 +1,14 @@
-use crate::mp4_pr::utils::{FrameData, mp4_for_each_frame};
+use crate::mp4_pr::mp4_for_each_frame;
 use crate::image2text::process_ocr;
 use crate::common::get_current_timestamp_str;
 use crate::image_utils::should_process_frame_rgb;
 use crate::common::get_primary_monitor_id;
 use crate::capture::ScreenCaptureConfig;
 use crate::capture::spawn_screenshot_task;
-use crate::capture::OcrResult;
+use crate::common::ImageData;
+use crate::common::ProcessingType;
 use tokio::sync::mpsc::channel;
-
+use crate::common::ImageDataCollection;
 
 use anyhow::Result;
 use std::{sync::{Arc, Mutex}, time::SystemTime, path::PathBuf};
@@ -20,33 +21,30 @@ async fn load_image_from_path(path: &std::path::PathBuf) -> Result<DynamicImage>
         .map_err(|e| anyhow::anyhow!("Failed to load image from {}: {}", path.display(), e))
 }
 
-async fn perform_ocr_and_return_frame_data(image: &DynamicImage) -> Result<FrameData> {
+async fn perform_ocr_and_return_frame_data(image: &DynamicImage) -> Result<ImageData> {
     let text = process_ocr(image).await?;
-    let frame_data = FrameData {
-        timestamp: get_current_timestamp_str(),
-        ocr_text: text,
-    };
-    Ok(frame_data)
+    let image_data = ImageData::new(get_current_timestamp_str(), 0, text, ProcessingType::OCR);
+    Ok(image_data)
 }
 
-pub async fn perform_ocr_on_image_from_path(path: &str) -> Result<FrameData> {
+pub async fn perform_ocr_on_image_from_path(path: &str) -> Result<ImageData> {
     let path_buf: PathBuf = std::path::PathBuf::from(path);
     let image: DynamicImage = load_image_from_path(&path_buf).await?;
     perform_ocr_and_return_frame_data(&image).await
 }
 
-pub async fn perform_ocr_on_video_path(path: &str) -> Result<Vec<FrameData>> {
+pub async fn perform_ocr_on_video_path(path: &str) -> Result<ImageDataCollection> {
     let path_buf: PathBuf = std::path::PathBuf::from(path);
-    let results: Vec<FrameData> = mp4_for_each_frame(&path_buf, None).await?;
+    let results: ImageDataCollection = mp4_for_each_frame(&path_buf, None).await?;
     Ok(results)
 }
 
-pub async fn run_live_screen_capture_ocr(config: &ScreenCaptureConfig) -> Vec<OcrResult> {
+pub async fn run_live_screen_capture_ocr(config: &ScreenCaptureConfig) -> ImageDataCollection {
     log::debug!("Starting capture at {} fps", config.fps);
     let monitor_id = get_primary_monitor_id();
     let total_frames = config.compute_total_frames();
 
-    let ocr_results = Arc::new(Mutex::new(Vec::<OcrResult>::new()));
+    let ocr_results = Arc::new(Mutex::new(ImageDataCollection::new()));
 
     let (screenshot_tx, mut screenshot_rx) = channel(32); // Reduced buffer size
 
@@ -86,7 +84,7 @@ pub async fn run_live_screen_capture_ocr(config: &ScreenCaptureConfig) -> Vec<Oc
 async fn process_screenshots_with_ocr(
     screenshot_rx: &mut tokio::sync::mpsc::Receiver<(u64, DynamicImage)>,
     max_frames: u64,
-    ocr_results: Arc<Mutex<Vec<OcrResult>>>,
+    ocr_results: Arc<Mutex<ImageDataCollection>>,
 ) -> Vec<tokio::task::JoinHandle<()>> {
     let mut frame_count = 0;
     let mut tasks = Vec::new();
@@ -132,12 +130,8 @@ async fn process_screenshots_with_ocr(
                             let now = SystemTime::now();
                             let datetime = chrono::DateTime::<chrono::Local>::from(now);
                             let timestamp = datetime.format("%Y-%m-%d %H:%M:%S%.3f").to_string();
-                            
-                            let result = OcrResult {
-                                timestamp,
-                                frame_number,
-                                text,
-                            };
+
+                            let result = ImageData::new(timestamp, frame_number, text, ProcessingType::OCR);
                             
                             // Use a scope to minimize lock duration
                             if let Ok(mut results) = results_arc.lock() {

@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use reqwest::header::{HeaderMap, HeaderValue};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
+use anyhow::Result;
+use crate::common::{get_current_timestamp_str, ImageData, ProcessingType};
 
 #[derive(Deserialize, Serialize)]
 struct Message {
@@ -66,11 +68,11 @@ async fn call_openrouter(url: &str, api_key: &str, model: &str, base64_str: &Str
                 "role": "user",
                 "content": [
                     { "type": "text", "text": prompt },
-                    { 
+                    {
                         "type": "image_url",
                         "image_url": {
                             "url": format!("data:image/png;base64,{}", base64_str)
-                        } 
+                        }
                     }
                 ]
             }
@@ -103,9 +105,11 @@ async fn call_openrouter(url: &str, api_key: &str, model: &str, base64_str: &Str
     }
 }
 
-pub async fn process_image_vision_from_path(image_path: &String, url: &str, api_key: &str, model: &str, prompt: Option<&str>) -> String {
+pub async fn process_image_vision_from_path(image_path: &String, url: &str, api_key: &str, model: &str, prompt: Option<&str>) -> Result<ImageData> {
     let image_base64 = image_path_to_base64(image_path).await;
-    process_image_vision(image_base64, url, api_key, model, prompt).await
+    let vision_res = process_image_vision(image_base64, url, api_key, model, prompt).await;
+    let image_data = ImageData::new(get_current_timestamp_str(), 0, vision_res, ProcessingType::Vision);
+    Ok(image_data)
 }
 
 async fn process_image_vision(image_base64: String, url: &str, api_key: &str, model: &str, prompt: Option<&str>) -> String {

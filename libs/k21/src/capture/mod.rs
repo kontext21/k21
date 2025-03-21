@@ -6,5 +6,4 @@ mod screen_record;
 pub use screen_record::ScreenCapturer;
 
 mod types;
-pub use types::OcrResult;
 pub use types::ScreenCaptureConfig;

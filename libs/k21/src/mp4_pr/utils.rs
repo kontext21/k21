@@ -11,6 +11,7 @@ use image::DynamicImage;
 use openh264::decoder::{Decoder, DecoderConfig, Flush};
 
 use super::bitstream_converter::Mp4BitstreamConverter;
+use crate::common::{ImageData, ProcessingType, ImageDataCollection};
 use crate::image2text::process_ocr;
 use crate::image_utils::convert_yuv_to_dynamic_image;
 use crate::image_utils::should_process_frame_luma;
@@ -28,13 +29,13 @@ async fn from_file_path_to_mp4_reader(path: &PathBuf) -> Result<std::vec::Vec<u8
     Ok(mp4)
 }
 
-pub async fn mp4_for_each_frame(path: &PathBuf, state: Option<Arc<Mutex<ProcessingState>>>) -> Result<Vec<FrameData>>
+pub async fn mp4_for_each_frame(path: &PathBuf, state: Option<Arc<Mutex<ImageDataCollection>>>) -> Result<ImageDataCollection>
 {
     let mp4_reader = from_file_path_to_mp4_reader(path).await?;
     mp4_for_each_frame_from_reader(&mp4_reader, state).await
 }
 
-pub async fn mp4_for_each_frame_from_reader(mp4_data: &[u8], state: Option<Arc<Mutex<ProcessingState>>>) -> Result<Vec<FrameData>>
+pub async fn mp4_for_each_frame_from_reader(mp4_data: &[u8], state: Option<Arc<Mutex<ImageDataCollection>>>) -> Result<ImageDataCollection>
 {
     let total_start = Instant::now();
     let mut results = Vec::new();
@@ -132,7 +133,7 @@ pub async fn mp4_for_each_frame_from_reader(mp4_data: &[u8], state: Option<Arc<M
     Ok(results)
 }
 
-pub async fn process_mp4_frames(mp4_path: &PathBuf) -> Result<Vec<FrameData>> {
+pub async fn process_mp4_frames(mp4_path: &PathBuf) -> Result<ImageDataCollection> {
     log::info!("Processing MP4 frames");
     let results = mp4_for_each_frame(mp4_path, None)
     .await?;
@@ -140,40 +141,29 @@ pub async fn process_mp4_frames(mp4_path: &PathBuf) -> Result<Vec<FrameData>> {
     Ok(results)
 }
 
-#[derive(Debug, Clone)]
-pub struct FrameData {
-    pub timestamp: String,
-    pub ocr_text: String,
-}
-
-pub type ProcessingState = Vec<FrameData>;
-
-pub async fn process_mp4_reader(mp4_reader: Vec<u8>, state: Option<Arc<Mutex<ProcessingState>>>) -> Result<Vec<FrameData>> {
+pub async fn process_mp4_reader(mp4_reader: Vec<u8>, state: Option<Arc<Mutex<ImageDataCollection>>>) -> Result<ImageDataCollection> {
     log::info!("Processing MP4 frames");
     let results = mp4_for_each_frame_from_reader(&mp4_reader, state.clone()).await?;
     Ok(results)
 }
 
-async fn process_frame_callback(frame_idx: u32, image: DynamicImage, state: Option<Arc<Mutex<ProcessingState>>>) -> FrameData {
+async fn process_frame_callback(frame_idx: u32, image: DynamicImage, state: Option<Arc<Mutex<ImageDataCollection>>>) -> ImageData {
 {
     let state_clone = state.clone();
     let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
     log::info!("Processing frame {}", frame_idx);
     let ocr_res = process_ocr(&image).await;
-    let frame_data = FrameData {
-        timestamp: timestamp.clone(),
-        ocr_text: match &ocr_res {
-            Ok(text) => text.clone(),
-            Err(_) => String::from("OCR Error"),
-        }
-    };
+
+    let ocr_res_ref: String = ocr_res.as_ref().map(String::as_str).unwrap_or_default().to_string();
+
+    let image_data: ImageData = ImageData::new(timestamp, frame_idx as u64, ocr_res_ref, ProcessingType::OCR);
 
     if let Ok(text) = ocr_res {
         log::info!("Frame {} OCR result: {}", frame_idx, text);
         if let Some(state) = &state_clone {
             let mut state = state.lock().unwrap();
-            state.push(frame_data.clone());
+            state.push(image_data.clone());
         }
     } else {
         log::error!(
@@ -183,14 +173,14 @@ async fn process_frame_callback(frame_idx: u32, image: DynamicImage, state: Opti
         );
     }
     
-    frame_data
+    image_data
     }
 }
 
 pub async fn process_mp4_from_base64_with_state(
     base64_data: &str,
-    state: Arc<Mutex<ProcessingState>>
-) -> Result<Vec<FrameData>> {
+    state: Arc<Mutex<ImageDataCollection>>
+) -> Result<ImageDataCollection> {
     log::info!("Processing MP4 from base64 data");
 
     // Decode base64 to binary data
@@ -209,7 +199,7 @@ pub async fn process_mp4_from_base64_with_state(
     process_mp4_reader(mp4_data, Some(state)).await
 }
 
-pub async fn process_mp4_from_base64(base64_data: &str) -> Result<Vec<FrameData>> {
+pub async fn process_mp4_from_base64(base64_data: &str) -> Result<ImageDataCollection> {
     log::info!("Processing MP4 from base64 data");
     
     // Decode base64 to binary data

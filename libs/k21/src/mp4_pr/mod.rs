@@ -1,2 +1,8 @@
-pub mod utils;
-pub mod bitstream_converter;
+mod utils;
+mod bitstream_converter;
+
+pub use utils::process_mp4_frames;
+pub use utils::process_mp4_reader;
+pub use utils::process_mp4_from_base64;
+pub use utils::process_mp4_from_base64_with_state;
+pub use utils::mp4_for_each_frame;

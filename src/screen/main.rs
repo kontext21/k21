@@ -60,7 +60,7 @@ async fn main() {
         ..Default::default()
     };
 
-    run_screen_capture(config).await;
+    let _ = run_screen_capture(config).await;
     
     rt.shutdown_timeout(std::time::Duration::from_nanos(0));
 }

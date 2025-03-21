@@ -6,7 +6,7 @@ use axum::{
     Json,
     extract::DefaultBodyLimit,
 };
-use k21::mp4_pr::utils::process_mp4_frames;
+use k21::mp4_pr::process_mp4_frames;
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
 use serde::{Deserialize, Serialize};
@@ -15,6 +15,7 @@ use mp4::Mp4Reader;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use std::io::Cursor;
 use std::sync::{Arc, Mutex};
+use k21::common::{ImageData, ImageDataCollection};
 // Or import the entire module
 
 // Add this function to initialize the logger
@@ -193,18 +194,19 @@ struct VideoBase64Request {
 }
 
 // Instead, import it from the utils module
-use k21::{mp4_pr::utils::ProcessingState, logger::init_logger_exe};
+use k21::logger::init_logger_exe;
 
 // Add a helper function to log the state
-pub fn log_processing_state(state: &ProcessingState) {
+pub fn log_processing_state(state: &ImageDataCollection) {
     log::info!("Processing state contains {} frames", state.len());
     
-    for (i, frame) in state.iter().enumerate() {
+    for image_data in state.iter() {
         log::info!(
-            "Frame {}: timestamp={}, ocr_text={}",
-            i,
-            frame.timestamp,
-            frame.ocr_text
+            "Frame {}: timestamp={}, text={}, processing_type={}",
+            image_data.frame_number(),
+            image_data.timestamp(),
+            image_data.content(),
+            image_data.processing_type()
         );
     }
 }
@@ -214,7 +216,7 @@ pub fn log_processing_state(state: &ProcessingState) {
 struct ProcessVideoResponse {
     message: String,
     success: bool,
-    result: Vec<serde_json::Value>,
+    result: Vec<ImageData>
 }
 
 async fn process_video_base64(Json(payload): Json<VideoBase64Request>) -> impl IntoResponse {
@@ -249,35 +251,22 @@ async fn process_video_base64(Json(payload): Json<VideoBase64Request>) -> impl I
     log::info!("Successfully decoded {} bytes of video data", binary_data.len());
     
     // Create shared state
-    let state = Arc::new(Mutex::new(ProcessingState::new()));
+    let state = Arc::new(Mutex::new(ImageDataCollection::new()));
     let state_clone = Arc::clone(&state);
     
     // Process the MP4 data with shared state
-    match k21::mp4_pr::utils::process_mp4_from_base64_with_state(
+    match k21::mp4_pr::process_mp4_from_base64_with_state(
         base64_part, 
         state_clone
     ).await {
         Ok(_) => {
-            // Access the final state
             let final_state = state.lock().unwrap();
-            log_processing_state(&final_state);
-            
-            // Create a vector of frame data with timestamp and OCR text
-            let frames_data: Vec<serde_json::Value> = final_state.iter()
-                .map(|frame| {
-                    serde_json::json!({
-                        "time_id": frame.timestamp,
-                        "ocr_text": frame.ocr_text
-                    })
-                })
-                .collect();
-            
             (
                 StatusCode::OK,
                 Json(ProcessVideoResponse {
                     message: format!("Successfully processed {} video frames", final_state.len()),
                     success: true,
-                    result: frames_data
+                    result: final_state.to_vec()
                 })
             )
         },
@@ -288,7 +277,7 @@ async fn process_video_base64(Json(payload): Json<VideoBase64Request>) -> impl I
                 Json(ProcessVideoResponse {
                     message: format!("Error processing video frames: {}", err),
                     success: false,
-                    result: Vec::new()  // Empty result for error case
+                    result: Vec::new()
                 })
             )
         }

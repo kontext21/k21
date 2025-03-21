@@ -31,24 +31,6 @@ pub async fn get_screenshot(monitor_id: u32) -> Result<DynamicImage> {
     Ok(image)
 }
 
-pub async fn capture_screen_video(
-    fps: Option<f32>,
-    duration: Option<u64>,
-    video_chunk_duration_in_seconds: Option<u64>,
-    output_dir_video: Option<&String>,
-) -> Result<()> {
-
-    let absolute_path = match output_dir_video {
-        Some(path) => to_verified_path(path)?,
-        None => return Err(anyhow::anyhow!("No output directory provided for video recording")),
-    };
-
-    log::info!("Absolute path: {}", absolute_path.display());
-
-    capture(fps, duration, Some(true), video_chunk_duration_in_seconds, None, Some(&absolute_path), None).await;
-    Ok(())
-}
-
 pub async fn capture(
     fps: Option<f32>,
     duration: Option<u64>,
@@ -57,7 +39,7 @@ pub async fn capture(
     dump_screenshot: Option<bool>,
     output_dir_video: Option<&Path>,
     output_dir_screenshot: Option<&Path>,
-) -> () {
+) -> Result<()> {
     let config = ScreenCaptureConfig {
         fps: fps.unwrap_or(1.0),
         video_chunk_duration_in_seconds: video_chunk_duration_in_seconds.unwrap_or(60),
@@ -69,13 +51,19 @@ pub async fn capture(
         ..Default::default()
     };
 
-    run_screen_capture(config).await;
+    let _ = run_screen_capture(config).await;
+    Ok(())
 }
 
-pub async fn run_screen_capture(config: ScreenCaptureConfig) {
-    log::info!("Starting capture at {} fps", config.fps);
+pub async fn run_screen_capture(mut config: ScreenCaptureConfig) -> Result<()> {
+    if config.save_video {
+        config.output_dir_video = Some(match &config.output_dir_video {
+            Some(path) => to_verified_path(path.to_str().unwrap())?,
+            None => std::env::current_dir()?, 
+        });
+    }
 
-    // get primary monitor
+    log::info!("Starting capture at {} fps", config.fps);
     let monitor_id = get_primary_monitor_id();
     log::warn!("Monitor ID: {}", monitor_id);
 
@@ -108,6 +96,7 @@ pub async fn run_screen_capture(config: ScreenCaptureConfig) {
     if config.save_video {
         save_video_chunk(&mut screen_record, &mut chunk_number, config.fps, config.output_dir_video.as_ref().unwrap());
     }
+    Ok(())
 }
 
 pub fn spawn_screenshot_task(

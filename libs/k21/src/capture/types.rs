@@ -1,16 +1,8 @@
 use std::path::PathBuf;
-
-#[derive(Debug, Clone)]
-pub struct OcrResult {
-    pub timestamp: String,
-    pub frame_number: u64,
-    pub text: String,
-}
-
 pub struct ScreenCaptureConfig {
     pub fps: f32,
     pub video_chunk_duration_in_seconds: u64,
-    pub stdout: bool,
+    pub stdout: bool, // deprecated ?
     pub save_screenshot: bool,
     pub save_video: bool,
     pub record_length_in_seconds: u64,
