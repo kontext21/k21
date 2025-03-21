@@ -65,16 +65,19 @@ pub async fn run_screen_capture(mut config: ScreenCaptureConfig) -> Result<()> {
 
     log::info!("Starting capture at {} fps", config.fps);
     let monitor_id = get_primary_monitor_id();
-    log::warn!("Monitor ID: {}", monitor_id);
+    log::info!("Monitor ID: {}", monitor_id);
 
     let (screenshot_tx, mut screenshot_rx) = channel(512);
 
-    let total_frames = config.compute_total_frames();
+    let total_frames = {
+        let frames = config.compute_total_frames();
+        if frames == 0 { None } else { Some(frames) }
+    };
 
     // Start screenshot capture task
     let screenshot_task = spawn_screenshot_task(
         config.fps,
-        Some(total_frames),
+        total_frames,
         monitor_id,
         screenshot_tx,
     );
@@ -112,7 +115,6 @@ pub fn spawn_screenshot_task(
             while max_frames.map_or(true, |max| frame_counter <= max) {
                 
                 let capture_start = Instant::now();
-                
                 match get_screenshot(monitor_id).await {
                     Ok(image) => {
                         // Use try_send to avoid blocking if receiver is slow
@@ -163,7 +165,7 @@ async fn process_captured_frames(
         if let Some((frame_number, image)) = screenshot_rx.recv().await {
             log::info!("frame_number {}", frame_number);
 
-            if &frame_number >= &total_frames {
+            if config.record_length_in_seconds > 0 && frame_number >= total_frames {
                 log::info!("Reached maximum frame count ({}), stopping capture", &total_frames);
                 exit_condition = false;
             }
