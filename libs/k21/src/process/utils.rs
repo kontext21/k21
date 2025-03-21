@@ -2,7 +2,6 @@ use crate::mp4_pr::mp4_for_each_frame;
 use crate::image2text::process_ocr;
 use crate::common::get_current_timestamp_str;
 use crate::image_utils::should_process_frame_rgb;
-use crate::common::get_primary_monitor_id;
 use crate::capture::ScreenCaptureConfig;
 use crate::capture::spawn_screenshot_task;
 use crate::common::ImageData;
@@ -11,7 +10,7 @@ use tokio::sync::mpsc::channel;
 use crate::common::ImageDataCollection;
 
 use anyhow::Result;
-use std::{sync::{Arc, Mutex}, time::SystemTime, path::PathBuf};
+use std::{sync::{Arc, Mutex}, path::PathBuf};
 use image::DynamicImage;
 
 const THRESHOLD: f32 = 0.05;
@@ -41,23 +40,24 @@ pub async fn perform_ocr_on_video_path(path: &str) -> Result<ImageDataCollection
 
 pub async fn run_live_screen_capture_ocr(config: &ScreenCaptureConfig) -> ImageDataCollection {
     log::debug!("Starting capture at {} fps", config.fps);
-    let monitor_id = get_primary_monitor_id();
-    let total_frames = config.compute_total_frames();
 
     let ocr_results = Arc::new(Mutex::new(ImageDataCollection::new()));
 
-    let (screenshot_tx, mut screenshot_rx) = channel(32); // Reduced buffer size
+    // channel for screenshot capture task
+    let (screenshot_tx, mut screenshot_rx) = channel(32);
+
+    // channel for closing the capture task
+    let (close_tx, close_rx) = tokio::sync::oneshot::channel();
 
     let screenshot_task = spawn_screenshot_task(
-        config.fps,
-        Some(total_frames),
-        monitor_id,
+        config,
         screenshot_tx,
+        close_tx
     );
 
     let ocr_tasks = process_screenshots_with_ocr(
         &mut screenshot_rx, 
-        total_frames,
+        close_rx,
         ocr_results.clone(),
     ).await;
 
@@ -77,23 +77,22 @@ pub async fn run_live_screen_capture_ocr(config: &ScreenCaptureConfig) -> ImageD
     };
 
     log::debug!("Collected {} OCR results", results.len());
-    
+
     results
 }
 
 async fn process_screenshots_with_ocr(
     screenshot_rx: &mut tokio::sync::mpsc::Receiver<(u64, DynamicImage)>,
-    max_frames: u64,
-    ocr_results: Arc<Mutex<ImageDataCollection>>,
+    mut close_rx: tokio::sync::oneshot::Receiver<()>,
+    ocr_results: Arc<Mutex<ImageDataCollection>>
 ) -> Vec<tokio::task::JoinHandle<()>> {
-    let mut frame_count = 0;
     let mut tasks = Vec::new();
 
     let mut previous_image: Option<DynamicImage> = None;
 
-    while frame_count <= max_frames {
-        if let Some((frame_number, image)) = screenshot_rx.recv().await {
-            frame_count = frame_number;
+    loop {
+        tokio::select! {
+        Some((frame_number, image)) = screenshot_rx.recv() => {
             log::debug!("Processing frame {} with OCR", frame_number);
 
             // Clone Arc for the task
@@ -120,40 +119,39 @@ async fn process_screenshots_with_ocr(
 
             // Process OCR in a separate task to avoid blocking
             let task = tokio::task::spawn(async move {
-                // Use the OCR module from k21/src/ocr
-                match crate::image2text::process_ocr(&image_clone).await {
-                    Ok(text) => {
-                        if !text.is_empty() {
-                            log::debug!("OCR result for frame {}: {}", frame_number, text);
-                            
-                            // Format current time as a human-readable string
-                            let now = SystemTime::now();
-                            let datetime = chrono::DateTime::<chrono::Local>::from(now);
-                            let timestamp = datetime.format("%Y-%m-%d %H:%M:%S%.3f").to_string();
-
-                            let result = ImageData::new(timestamp, frame_number, text, ProcessingType::OCR);
-                            
-                            // Use a scope to minimize lock duration
-                            if let Ok(mut results) = results_arc.lock() {
-                                results.push(result);
-                            } else {
-                                log::error!("Failed to lock OCR results mutex");
-                            }
-                        } else {
-                            log::debug!("No text detected in frame {}", frame_number);
-                        }
-                    },
-                    Err(e) => log::error!("OCR error on frame {}: {}", frame_number, e),
-                }
+                process_ocr_frame(&image_clone, frame_number, &results_arc).await;
             });
             
             tasks.push(task);
             previous_image = Some(image.clone());
-        } else {
+        }
+        _ = &mut close_rx => {
             log::debug!("Screenshot channel closed, stopping OCR processing");
             break;
         }
+        }
     }
-    
+
     tasks
+}
+
+async fn process_ocr_frame(
+    image: &DynamicImage,
+    frame_number: u64,
+    results_arc: &Arc<Mutex<Vec<ImageData>>>
+) {
+    match crate::image2text::process_ocr(image).await {
+        Ok(text) if !text.is_empty() => {
+            let timestamp = get_current_timestamp_str();
+            let result = ImageData::new(timestamp, frame_number, text, ProcessingType::OCR);
+            
+            if let Ok(mut results) = results_arc.lock() {
+                results.push(result);
+            } else {
+                log::error!("Failed to lock OCR results mutex");
+            }
+        }
+        Ok(_) => log::debug!("No text detected in frame {}", frame_number),
+        Err(e) => log::error!("OCR error on frame {}: {}", frame_number, e),
+    }
 }

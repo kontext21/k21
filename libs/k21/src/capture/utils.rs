@@ -5,21 +5,16 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 use tokio::io::{self, AsyncWriteExt};
 use tokio::sync::mpsc::channel;
-use xcap::Monitor;
 
-use crate::common::get_primary_monitor_id;
+use super::screen_record::get_primary_monitor;
 use crate::common::to_verified_path;
 use crate::capture::screen_record;
 
 use super::ScreenCaptureConfig;
 
-pub async fn get_screenshot(monitor_id: u32) -> Result<DynamicImage> {
+pub async fn get_screenshot() -> Result<DynamicImage> {
     let image = std::thread::spawn(move || -> Result<DynamicImage> {
-        let monitor = Monitor::all()
-            .unwrap()
-            .into_iter()
-            .find(|m| m.id() == monitor_id)
-            .ok_or_else(|| anyhow::anyhow!("Monitor not found"))?;
+        let monitor = get_primary_monitor();
         let image = monitor
             .capture_image()
             .map_err(anyhow::Error::from)
@@ -64,58 +59,54 @@ pub async fn run_screen_capture(mut config: ScreenCaptureConfig) -> Result<()> {
     }
 
     log::info!("Starting capture at {} fps", config.fps);
-    let monitor_id = get_primary_monitor_id();
-    log::info!("Monitor ID: {}", monitor_id);
 
+    let screen_record = &mut screen_record::ScreenCapturer::new();
+
+    // channel for screenshot capture task
     let (screenshot_tx, mut screenshot_rx) = channel(512);
-
-    let total_frames = {
-        let frames = config.compute_total_frames();
-        if frames == 0 { None } else { Some(frames) }
-    };
+    
+    // channel for closing the capture task
+    let (close_tx, close_rx) = tokio::sync::oneshot::channel::<()>();
 
     // Start screenshot capture task
     let screenshot_task = spawn_screenshot_task(
-        config.fps,
-        total_frames,
-        monitor_id,
+        &config,
         screenshot_tx,
+        close_tx,
     );
 
-    let mut screen_record = screen_record::ScreenCapturer::new(monitor_id);
-    let total_fps_in_chunk = config.fps as u64 * config.video_chunk_duration_in_seconds;
     let mut chunk_number = 0;
 
-    process_captured_frames(
+    save_or_send_captured_frames(
         &config,
         &mut screenshot_rx,
-        &mut screen_record,
-        total_fps_in_chunk,
+        close_rx,
         &mut chunk_number,
     ).await;
 
     log::info!("Exiting...");
-    screenshot_task.await.unwrap();
+    let _ = screenshot_task.await;
     if config.save_video {
-        save_video_chunk(&mut screen_record, &mut chunk_number, config.fps, config.output_dir_video.as_ref().unwrap());
+        save_video_chunk(screen_record, &mut chunk_number, config.fps, config.output_dir_video.as_ref().unwrap());
     }
     Ok(())
 }
 
 pub fn spawn_screenshot_task(
-    fps: f32,
-    max_frames: Option<u64>,
-    monitor_id: u32,
+    config: &ScreenCaptureConfig,
     screenshot_tx: tokio::sync::mpsc::Sender<(u64, DynamicImage)>,
+    close_tx: tokio::sync::oneshot::Sender<()>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn({
-        let interval = Duration::from_secs_f32(1.0 / fps);
+        let interval = Duration::from_secs_f32(1.0 / config.fps);
+        let total_frames_to_process = config.record_length_in_seconds * config.fps as u64;
+        let live_capture = config.record_length_in_seconds == 0;
+
         async move {
             let mut frame_counter: u64 = 1;
-            while max_frames.map_or(true, |max| frame_counter <= max) {
-                
+            while live_capture || frame_counter <= total_frames_to_process {
                 let capture_start = Instant::now();
-                match get_screenshot(monitor_id).await {
+                match get_screenshot().await {
                     Ok(image) => {
                         // Use try_send to avoid blocking if receiver is slow
                         if let Err(e) = screenshot_tx.send((frame_counter, image)).await {
@@ -144,68 +135,64 @@ pub fn spawn_screenshot_task(
                     );
                 }
             }
-
+            let _ = close_tx.send(());
             log::debug!("Screenshot task completed after {} frames", frame_counter - 1);
         }
     })
 }
 
-async fn process_captured_frames(
+async fn save_or_send_captured_frames(
     config: &ScreenCaptureConfig,
     screenshot_rx: &mut tokio::sync::mpsc::Receiver<(u64, DynamicImage)>,
-    screen_record: &mut screen_record::ScreenCapturer,
-    total_fps_in_chunk: u64,
+    mut close_rx: tokio::sync::oneshot::Receiver<()>,
     chunk_number: &mut u64,
 ) {
-    let mut exit_condition: bool = true;
-    let mut screenshot_count = 0;
-    let total_frames = config.compute_total_frames();
+    let screen_record = &mut screen_record::ScreenCapturer::new();
+    let total_fps_in_chunk = config.fps as u64 * config.video_chunk_duration_in_seconds;
 
-    while exit_condition {
-        if let Some((frame_number, image)) = screenshot_rx.recv().await {
+    loop {
+        tokio::select! {
+            Some((frame_number, image)) = screenshot_rx.recv() => {
 
-            if config.record_length_in_seconds > 0 && frame_number >= total_frames {
-                log::info!("Reached maximum frame count ({}), stopping capture", &total_frames);
-                exit_condition = false;
-            }
-            
-            if config.stdout {
-                send_frame_to_stdout(frame_number, &image).await;
-            }
+                if config.stdout {
+                    send_frame_to_stdout(frame_number, &image).await;
+                }
 
-            // record the frame
-            if config.save_video {
-                screen_record.frame(&image);
-                log::info!("frame {}", frame_number);
+                // record the frame
+                if config.save_video {
+                    screen_record.frame(&image);
+                    log::info!("frame {}", frame_number);
 
-                if frame_number % total_fps_in_chunk == 0 {
-                    log::info!(
-                        "frame {}, total_fps_in_chunk {}",
-                        frame_number,
-                        total_fps_in_chunk
-                    );
-                    save_video_chunk(screen_record, chunk_number, config.fps, config.output_dir_video.as_ref().unwrap());
+                    if frame_number % total_fps_in_chunk == 0 {
+                        log::info!(
+                            "frame {}, total_fps_in_chunk {}",
+                            frame_number,
+                            total_fps_in_chunk
+                        );
+                        save_video_chunk(screen_record, chunk_number, config.fps, config.output_dir_video.as_ref().unwrap());
+                    }
+                }
+
+                // save screenshot to disk
+                if config.save_screenshot {
+                    if let Some(output_dir) = &config.output_dir_screenshot {
+                        save_screenshot(frame_number, image.clone(), output_dir);
+                    } else {
+                        log::warn!("Screenshot saving enabled but no output directory specified");
+                    }
                 }
             }
-
-            // save screenshot to disk
-            if config.save_screenshot {
-                if let Some(output_dir) = &config.output_dir_screenshot {
-                    save_screenshot(frame_number, image.clone(), output_dir);
-                    screenshot_count += 1;
-                    log::info!("Saved screenshot #{} to directory: {}", 
-                              screenshot_count, output_dir.display());
-                } else {
-                    log::warn!("Screenshot saving enabled but no output directory specified");
-                }
+            _ = &mut close_rx => {
+                log::info!("Received close signal");
+                break;
             }
         }
     }
     
     if config.save_screenshot {
         if let Some(output_dir) = &config.output_dir_screenshot {
-            log::info!("Total screenshots saved: {} in directory: {}", 
-                      screenshot_count, output_dir.display());
+            log::info!("Total screenshots saved in directory: {}", 
+                    output_dir.display());
         }
     }
 }

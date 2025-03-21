@@ -17,10 +17,8 @@ impl std::fmt::Display for ProcessingType {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageData {
-    #[serde(rename = "time_id")]
     timestamp: String,
     frame_number: u64,
-    #[serde(rename = "ocr_text")]
     content: String,
     processing_type: ProcessingType,
 }
