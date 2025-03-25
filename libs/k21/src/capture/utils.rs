@@ -1,6 +1,5 @@
 use anyhow::Result;
 use image::DynamicImage;
-use std::path::Path;
 
 use std::time::{Duration, Instant};
 use tokio::io::{self, AsyncWriteExt};
@@ -12,35 +11,11 @@ use super::screen_record::get_screenshot;
 
 use super::ScreenCaptureConfig;
 
-pub async fn capture(
-    fps: Option<f32>,
-    duration: Option<u64>,
-    dump_video: Option<bool>,
-    video_chunk_duration_in_seconds: Option<u64>,
-    dump_screenshot: Option<bool>,
-    output_dir_video: Option<&Path>,
-    output_dir_screenshot: Option<&Path>,
-) -> Result<()> {
-    let config = ScreenCaptureConfig {
-        fps: fps.unwrap_or(1.0),
-        video_chunk_duration_in_seconds: video_chunk_duration_in_seconds.unwrap_or(60),
-        output_dir_video: output_dir_video.map(|p| p.to_path_buf()),
-        output_dir_screenshot: output_dir_screenshot.map(|p| p.to_path_buf()),
-        save_screenshot: dump_screenshot.unwrap_or(false),
-        save_video: dump_video.unwrap_or(false),
-        record_length_in_seconds: duration.unwrap_or(1),
-        ..Default::default()
-    };
-
-    let _ = run_screen_capture(config).await;
-    Ok(())
-}
-
-pub async fn run_screen_capture(mut config: ScreenCaptureConfig) -> Result<()> {
+pub async fn capture(mut config: ScreenCaptureConfig) -> Result<()> {
     if config.save_video {
         config.output_dir_video = Some(match &config.output_dir_video {
-            Some(path) => to_verified_path(path.to_str().unwrap())?,
-            None => std::env::current_dir()?, 
+            Some(path) => to_verified_path(path)?.to_string_lossy().to_string(),
+            None => std::env::current_dir()?.to_string_lossy().to_string(), 
         });
     }
 
@@ -178,7 +153,7 @@ async fn save_or_send_captured_frames(
     if config.save_screenshot {
         if let Some(output_dir) = &config.output_dir_screenshot {
             log::info!("Total screenshots saved in directory: {}", 
-                    output_dir.display());
+                    output_dir);
         }
     }
 }
@@ -199,15 +174,15 @@ async fn send_frame_to_stdout(frame_number: u64, image: &DynamicImage) {
     stdout.flush().await.unwrap(); // Ensure it's sent
 }
 
-fn save_video_chunk(screen_record: &mut screen_record::ScreenCapturer, chunk_number: &mut u64, fps: f32, output_dir_video: &Path) {
+fn save_video_chunk(screen_record: &mut screen_record::ScreenCapturer, chunk_number: &mut u64, fps: f32, output_dir_video: &str) {
     // save video chunk to disk with unique name using the provided output directory
-    let path = output_dir_video.join(format!("output-{}.mp4", chunk_number));
+    let path = std::path::PathBuf::from(output_dir_video).join(format!("output-{}.mp4", chunk_number));
     screen_record.save(&path, fps);
     *chunk_number += 1;
 }
 
-fn save_screenshot(frame_number: u64, image: DynamicImage, output_dir: &Path) {
-    let output_dir = output_dir.to_owned();
+fn save_screenshot(frame_number: u64, image: DynamicImage, output_dir: &str) {
+    let output_dir = std::path::PathBuf::from(output_dir);
     tokio::task::spawn(async move {
         let path = output_dir.join(format!("screenshot-{}.png", frame_number));
         match image.save_with_format(&path, image::ImageFormat::Png) {

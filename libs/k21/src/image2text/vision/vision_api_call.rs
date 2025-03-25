@@ -108,7 +108,7 @@ async fn call_openrouter(url: &str, api_key: &str, model: &str, base64_str: &Str
 pub async fn process_image_vision_from_path(image_path: &String, url: &str, api_key: &str, model: &str, prompt: Option<&str>) -> Result<ImageData> {
     let image_base64 = image_path_to_base64(image_path).await;
     let vision_res = process_image_vision(image_base64, url, api_key, model, prompt).await;
-    let image_data = ImageData::new(get_current_timestamp_str(), 0, vision_res, ProcessingType::Vision);
+    let image_data = ImageData::new(get_current_timestamp_str(), 0, vision_res, ProcessingType::VISION);
     Ok(image_data)
 }
 
