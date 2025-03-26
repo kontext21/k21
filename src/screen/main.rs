@@ -1,6 +1,6 @@
 use clap::Parser;
 use k21::logger::init_logger_exe;
-use k21::capture::{run_screen_capture, ScreenCaptureConfig};
+use k21::capture::{capture_with_stdout, ScreenCaptureConfig};
 
 #[derive(Parser)]
 #[command(version, about = "A CLI tool to handle screen refresh rates", long_about = None)]
@@ -53,14 +53,13 @@ async fn main() {
     let config = ScreenCaptureConfig {
         fps: cli.fps,
         video_chunk_duration_in_seconds: cli.video_chunk_duration,
-        stdout: cli.stdout,
         save_screenshot: cli.save_screenshot,
         save_video: cli.save_video,
         record_length_in_seconds: 0,
         ..Default::default()
     };
 
-    let _ = run_screen_capture(config).await;
+    let _ = capture_with_stdout(config, cli.stdout).await;
     
     rt.shutdown_timeout(std::time::Duration::from_nanos(0));
 }

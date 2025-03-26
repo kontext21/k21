@@ -3,7 +3,7 @@ pub(crate) use utils::get_current_timestamp_str;
 
 mod types;
 pub use types::ImageData;
-pub(crate) use types::ProcessingType;
+pub use types::ProcessingType;
 pub use types::ImageDataCollection;
 
 mod path_utils;

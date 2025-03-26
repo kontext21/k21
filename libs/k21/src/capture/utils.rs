@@ -11,7 +11,11 @@ use super::screen_record::get_screenshot;
 
 use super::ScreenCaptureConfig;
 
-pub async fn capture(mut config: ScreenCaptureConfig) -> Result<()> {
+pub async fn capture(config: ScreenCaptureConfig) -> Result<()> {
+    capture_with_stdout(config, false).await
+}
+
+pub async fn capture_with_stdout(mut config: ScreenCaptureConfig, stdout: bool) -> Result<()> {
     if config.save_video {
         config.output_dir_video = Some(match &config.output_dir_video {
             Some(path) => to_verified_path(path)?.to_string_lossy().to_string(),
@@ -40,6 +44,7 @@ pub async fn capture(mut config: ScreenCaptureConfig) -> Result<()> {
 
     save_or_send_captured_frames(
         &config,
+        stdout,
         &mut screenshot_rx,
         close_rx,
         &mut chunk_number,
@@ -104,6 +109,7 @@ pub fn spawn_screenshot_task(
 
 async fn save_or_send_captured_frames(
     config: &ScreenCaptureConfig,
+    stdout: bool,
     screenshot_rx: &mut tokio::sync::mpsc::Receiver<(u64, DynamicImage)>,
     mut close_rx: tokio::sync::oneshot::Receiver<()>,
     chunk_number: &mut u64,
@@ -115,7 +121,7 @@ async fn save_or_send_captured_frames(
         tokio::select! {
             Some((frame_number, image)) = screenshot_rx.recv() => {
 
-                if config.stdout {
+                if stdout {
                     send_frame_to_stdout(frame_number, &image).await;
                 }
 

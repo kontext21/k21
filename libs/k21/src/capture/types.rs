@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 pub struct ScreenCaptureConfig {
     pub fps: f32,
     pub video_chunk_duration_in_seconds: u64,
-    pub stdout: bool,
     pub save_screenshot: bool,
     pub save_video: bool,
     pub record_length_in_seconds: u64,
@@ -17,7 +16,6 @@ impl Default for ScreenCaptureConfig {
         Self {
             fps: 1.0,
             video_chunk_duration_in_seconds: 60,
-            stdout: false,
             save_screenshot: false,
             save_video: false,
             record_length_in_seconds: 1,
