@@ -6,12 +6,15 @@ use crate::capture::ScreenCaptureConfig;
 use crate::capture::spawn_screenshot_task;
 use crate::common::ImageData;
 use crate::common::ProcessingType;
-use tokio::sync::mpsc::channel;
+use tokio::sync::broadcast::channel;
 use crate::common::ImageDataCollection;
-
+use crate::capture::handle_captured_frames;
 use anyhow::Result;
 use std::{sync::{Arc, Mutex}, path::PathBuf};
 use image::DynamicImage;
+
+use tokio::sync::watch;
+
 
 const THRESHOLD: f32 = 0.05;
 
@@ -44,10 +47,13 @@ pub async fn run_live_screen_capture_ocr(config: &ScreenCaptureConfig) -> ImageD
     let ocr_results = Arc::new(Mutex::new(ImageDataCollection::new()));
 
     // channel for screenshot capture task
-    let (screenshot_tx, mut screenshot_rx) = channel(32);
+    let (screenshot_tx, mut screenshot_rx) = channel(512);
+    let mut screenshot_rx_clone = screenshot_rx.resubscribe();
 
     // channel for closing the capture task
-    let (close_tx, close_rx) = tokio::sync::oneshot::channel();
+    let (close_tx, close_rx) = watch::channel(false);
+    let close_rx_clone = close_rx.clone();
+
 
     let screenshot_task = spawn_screenshot_task(
         config,
@@ -59,13 +65,25 @@ pub async fn run_live_screen_capture_ocr(config: &ScreenCaptureConfig) -> ImageD
         &mut screenshot_rx, 
         close_rx,
         ocr_results.clone(),
-    ).await;
+    );
+
+    let handle_captured_frames_task = handle_captured_frames(
+        &config,
+        false,
+        &mut screenshot_rx_clone,
+        close_rx_clone,
+    );
+
+    let (_, ocr_result) = tokio::join!(
+        handle_captured_frames_task,
+        ocr_tasks
+    );
 
     if let Err(e) = screenshot_task.await {
         log::error!("Screenshot task failed: {:?}", e);
     }
 
-    for (i, task) in ocr_tasks.into_iter().enumerate() {
+    for (i, task) in ocr_result.into_iter().enumerate() {
         if let Err(e) = task.await {
             log::error!("OCR task {} failed: {:?}", i, e);
         }
@@ -82,8 +100,8 @@ pub async fn run_live_screen_capture_ocr(config: &ScreenCaptureConfig) -> ImageD
 }
 
 async fn process_screenshots_with_ocr(
-    screenshot_rx: &mut tokio::sync::mpsc::Receiver<(u64, DynamicImage)>,
-    mut close_rx: tokio::sync::oneshot::Receiver<()>,
+    screenshot_rx: &mut tokio::sync::broadcast::Receiver<(u64, DynamicImage)>,
+    mut close_rx: tokio::sync::watch::Receiver<bool>,
     ocr_results: Arc<Mutex<ImageDataCollection>>
 ) -> Vec<tokio::task::JoinHandle<()>> {
     let mut tasks = Vec::new();
@@ -92,7 +110,7 @@ async fn process_screenshots_with_ocr(
 
     loop {
         tokio::select! {
-        Some((frame_number, image)) = screenshot_rx.recv() => {
+        Ok((frame_number, image)) = screenshot_rx.recv() => {
             log::debug!("Processing frame {} with OCR", frame_number);
 
             // Clone Arc for the task
@@ -125,9 +143,11 @@ async fn process_screenshots_with_ocr(
             tasks.push(task);
             previous_image = Some(image.clone());
         }
-        _ = &mut close_rx => {
-            log::debug!("Screenshot channel closed, stopping OCR processing");
-            break;
+        Ok(_) = close_rx.changed() => {
+            if *close_rx.borrow() {
+                log::debug!("Screenshot channel closed, stopping OCR processing");
+                break;
+            }
         }
         }
     }
@@ -153,5 +173,56 @@ async fn process_ocr_frame(
         }
         Ok(_) => log::debug!("No text detected in frame {}", frame_number),
         Err(e) => log::error!("OCR error on frame {}: {}", frame_number, e),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[tokio::test]
+    async fn test_live_screen_capture_ocr() -> Result<()> {
+        // Create a temporary directory for screenshots
+        let temp_dir = tempdir()?;
+        let temp_path = temp_dir.path().to_string_lossy().to_string();
+
+        // Setup test configuration
+        let config = ScreenCaptureConfig {
+            fps: 1.0,
+            video_chunk_duration_in_seconds: 1,
+            save_screenshot: true,  // Enable screenshot saving
+            save_video: false,
+            record_length_in_seconds: 2,
+            output_dir_screenshot: Some(temp_path),  // Use temp directory
+            output_dir_video: None,
+        };
+
+        // Run OCR capture
+        let results = run_live_screen_capture_ocr(&config).await;
+
+        // Print results for debugging
+        println!("Total OCR results: {}", results.len());
+        
+        // Verify screenshots were saved
+        let entries = std::fs::read_dir(temp_dir.path())?
+            .filter_map(|e| e.ok())
+            .collect::<Vec<_>>();
+        
+        println!("Screenshots saved: {}", entries.len());
+
+        // Verify results
+        assert!(!results.is_empty(), "Should have captured some OCR results");
+        assert!(!entries.is_empty(), "Should have saved some screenshots");
+        
+        // Verify each result
+        for result in results {
+            assert!(!result.timestamp().is_empty(), "Timestamp should not be empty");
+            assert!(result.frame_number() > 0, "Frame number should be positive");
+            assert_eq!(result.processing_type(), &ProcessingType::OCR);
+        }
+
+        // temp_dir will be automatically cleaned up when it goes out of scope
+        Ok(())
     }
 }

@@ -18,6 +18,10 @@ impl ScreenCapturer {
         }
     }
 
+    pub fn is_buf_empty(&self) -> bool {
+        self.buf.len() == 0
+    }
+
     pub fn frame(&mut self, image: &DynamicImage) {
         use openh264::formats::*;
         let frame = image.to_rgb8();

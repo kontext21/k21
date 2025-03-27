@@ -3,12 +3,12 @@ use image::DynamicImage;
 
 use std::time::{Duration, Instant};
 use tokio::io::{self, AsyncWriteExt};
-use tokio::sync::mpsc::channel;
+use tokio::sync::broadcast::channel;
 
 use crate::common::to_verified_path;
 use crate::capture::screen_record;
 use super::screen_record::get_screenshot;
-
+use tokio::sync::watch;
 use super::ScreenCaptureConfig;
 
 pub async fn capture(config: ScreenCaptureConfig) -> Result<()> {
@@ -25,43 +25,32 @@ pub async fn capture_with_stdout(mut config: ScreenCaptureConfig, stdout: bool) 
 
     log::info!("Starting capture at {} fps", config.fps);
 
-    let screen_record = &mut screen_record::ScreenCapturer::new();
-
-    // channel for screenshot capture task
     let (screenshot_tx, mut screenshot_rx) = channel(512);
-    
-    // channel for closing the capture task
-    let (close_tx, close_rx) = tokio::sync::oneshot::channel::<()>();
+    let (close_tx, close_rx) = watch::channel(false);
 
-    // Start screenshot capture task
     let screenshot_task = spawn_screenshot_task(
         &config,
         screenshot_tx,
         close_tx,
     );
 
-    let mut chunk_number = 0;
-
-    save_or_send_captured_frames(
+    let _ = handle_captured_frames(
         &config,
         stdout,
         &mut screenshot_rx,
         close_rx,
-        &mut chunk_number,
     ).await;
 
     log::info!("Exiting...");
     let _ = screenshot_task.await;
-    if config.save_video {
-        save_video_chunk(screen_record, &mut chunk_number, config.fps, config.output_dir_video.as_ref().unwrap());
-    }
+
     Ok(())
 }
 
 pub fn spawn_screenshot_task(
     config: &ScreenCaptureConfig,
-    screenshot_tx: tokio::sync::mpsc::Sender<(u64, DynamicImage)>,
-    close_tx: tokio::sync::oneshot::Sender<()>,
+    screenshot_tx: tokio::sync::broadcast::Sender<(u64, DynamicImage)>,
+    close_tx: tokio::sync::watch::Sender<bool>
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn({
         let interval = Duration::from_secs_f32(1.0 / config.fps);
@@ -75,7 +64,7 @@ pub fn spawn_screenshot_task(
                 match get_screenshot().await {
                     Ok(image) => {
                         // Use try_send to avoid blocking if receiver is slow
-                        if let Err(e) = screenshot_tx.send((frame_counter, image)).await {
+                        if let Err(e) = screenshot_tx.send((frame_counter, image)) {
                             log::error!("Failed to send screenshot: {}", e);
                             break;
                         }
@@ -101,26 +90,57 @@ pub fn spawn_screenshot_task(
                     );
                 }
             }
-            let _ = close_tx.send(());
+            let _ = close_tx.send(true);
             log::debug!("Screenshot task completed after {} frames", frame_counter - 1);
         }
     })
 }
 
+pub async fn handle_captured_frames(
+    config: &ScreenCaptureConfig,
+    stdout: bool,
+    screenshot_rx: &mut tokio::sync::broadcast::Receiver<(u64, DynamicImage)>,
+    close_rx: tokio::sync::watch::Receiver<bool>
+) -> Result<()> {
+    let screen_record = &mut screen_record::ScreenCapturer::new();
+    let mut chunk_number = 0;
+
+    // Handle frames
+    save_or_send_captured_frames(
+        config,
+        stdout,
+        screen_record,
+        screenshot_rx,
+        close_rx,
+        &mut chunk_number,
+    ).await;
+    
+    // Save final video chunk if needed
+    if config.save_video && !screen_record.is_buf_empty() {
+        save_video_chunk(
+            screen_record, 
+            &mut chunk_number, 
+            config.fps, 
+            config.output_dir_video.as_ref().unwrap()
+        );
+    }
+    
+    Ok(())
+}
+
 async fn save_or_send_captured_frames(
     config: &ScreenCaptureConfig,
     stdout: bool,
-    screenshot_rx: &mut tokio::sync::mpsc::Receiver<(u64, DynamicImage)>,
-    mut close_rx: tokio::sync::oneshot::Receiver<()>,
+    screen_record: &mut screen_record::ScreenCapturer,
+    screenshot_rx: &mut tokio::sync::broadcast::Receiver<(u64, DynamicImage)>,
+    mut close_rx: tokio::sync::watch::Receiver<bool>,
     chunk_number: &mut u64,
 ) {
-    let screen_record = &mut screen_record::ScreenCapturer::new();
     let total_fps_in_chunk = config.fps as u64 * config.video_chunk_duration_in_seconds;
 
     loop {
         tokio::select! {
-            Some((frame_number, image)) = screenshot_rx.recv() => {
-
+            Ok((frame_number, image)) = screenshot_rx.recv() => {
                 if stdout {
                     send_frame_to_stdout(frame_number, &image).await;
                 }
@@ -149,9 +169,12 @@ async fn save_or_send_captured_frames(
                     }
                 }
             }
-            _ = &mut close_rx => {
-                log::info!("Received close signal");
-                break;
+
+            Ok(_) = close_rx.changed() => {
+                if *close_rx.borrow() {
+                    log::debug!("Screenshot channel closed, stopping OCR processing");
+                    break;
+                }
             }
         }
     }
