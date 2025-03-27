@@ -4,6 +4,10 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use anyhow::Result;
 use crate::common::{get_current_timestamp_str, ImageData, ProcessingType};
 
+use super::VisionConfig;
+
+const DEFAULT_PROMPT: &str = "What is in this image?";
+
 #[derive(Deserialize, Serialize)]
 struct Message {
     role: String,
@@ -105,19 +109,21 @@ async fn call_openrouter(url: &str, api_key: &str, model: &str, base64_str: &Str
     }
 }
 
-pub async fn process_image_vision_from_path(image_path: &String, url: &str, api_key: &str, model: &str, prompt: Option<&str>) -> Result<ImageData> {
+pub async fn process_image_vision_from_path(image_path: &String, vision_config: &VisionConfig) -> Result<ImageData> {
     let image_base64 = image_path_to_base64(image_path).await;
-    let vision_res = process_image_vision(image_base64, url, api_key, model, prompt).await;
-    let image_data = ImageData::new(get_current_timestamp_str(), 0, vision_res, ProcessingType::VISION);
+    let vision_res = process_image_vision(image_base64, vision_config).await;
+    let image_data = ImageData::new(get_current_timestamp_str(), 0, vision_res, ProcessingType::Vision);
     Ok(image_data)
 }
 
-async fn process_image_vision(image_base64: String, url: &str, api_key: &str, model: &str, prompt: Option<&str>) -> String {
+pub async fn process_image_vision(image_base64: String, vision_config: &VisionConfig) -> String {
+    let (url, api_key, model, prompt) = vision_config.unpack()
+        .expect("Failed to unpack vision config, some fields are missing");
 
     let final_prompt = if let Some(prompt) = prompt {
         prompt
     } else {
-        "What is in this image?"
+        DEFAULT_PROMPT
     };
 
     call_openrouter(url, api_key, model, &image_base64, &final_prompt).await

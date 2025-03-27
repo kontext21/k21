@@ -12,7 +12,7 @@ use openh264::decoder::{Decoder, DecoderConfig, Flush};
 
 use super::bitstream_converter::Mp4BitstreamConverter;
 use crate::common::{ImageData, ProcessingType, ImageDataCollection};
-use crate::image2text::process_ocr;
+use crate::image2text::{process_ocr, OcrConfig};
 use crate::image_utils::convert_yuv_to_dynamic_image;
 use crate::image_utils::should_process_frame_luma;
 // Module-level constant
@@ -153,7 +153,7 @@ async fn process_frame_callback(frame_idx: u32, image: DynamicImage, state: Opti
     let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
     log::info!("Processing frame {}", frame_idx);
-    let ocr_res = process_ocr(&image).await;
+    let ocr_res = process_ocr(&image, &OcrConfig::default()).await;
 
     let ocr_res_ref: String = ocr_res.as_ref().map(String::as_str).unwrap_or_default().to_string();
 

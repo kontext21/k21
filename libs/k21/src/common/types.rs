@@ -2,14 +2,14 @@ use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ProcessingType {
-    VISION,
+    Vision,
     OCR,
 }
 
 impl std::fmt::Display for ProcessingType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ProcessingType::VISION => write!(f, "VISION"),
+            ProcessingType::Vision => write!(f, "Vision"),
             ProcessingType::OCR => write!(f, "OCR"),
         }
     }
@@ -18,8 +18,8 @@ impl std::fmt::Display for ProcessingType {
 impl From<&str> for ProcessingType {
     fn from(s: &str) -> Self {
         match s.to_lowercase().as_str() {
-            "vision" => ProcessingType::VISION,
-            "ocr" => ProcessingType::OCR,
+            "Vision" => ProcessingType::Vision,
+            "OCR" => ProcessingType::OCR,
             _ => ProcessingType::OCR, // default case
         }
     }

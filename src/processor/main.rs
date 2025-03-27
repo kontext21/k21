@@ -2,7 +2,7 @@ use clap::Parser;
 use image::{DynamicImage, RgbImage};
 use k21::image_utils::images_differ_rgb;
 use k21::mp4_pr::mp4_for_each_frame;
-use k21::image2text::process_ocr;
+use k21::image2text::{process_ocr, OcrConfig};
 use k21::logger::init_logger_exe;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
@@ -50,7 +50,7 @@ async fn main() {
         let path = cli.image.unwrap();
         let image = image::open(&path);
         if let Ok(image) = image {
-            let ocr_res = process_ocr(&image).await;
+            let ocr_res = process_ocr(&image, &OcrConfig::default()).await;
             if let Ok(text) = ocr_res {
                 log::info!("OCR result: {}", text);
             } else {
@@ -124,7 +124,7 @@ async fn main() {
                 };
 
                 if should_process {
-                    let ocr_res = process_ocr(&image).await;
+                    let ocr_res = process_ocr(&image, &OcrConfig::default()).await;
                     if let Ok(text) = ocr_res {
                         log::info!("OCR result: {}", text);
                     } else {

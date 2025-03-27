@@ -1,7 +1,8 @@
-use image::{DynamicImage, RgbImage};
-use openh264::decoder::DecodedYUV;
-use openh264::formats::YUVSource;
+use openh264::{decoder::DecodedYUV, formats::YUVSource};
 use anyhow::Result;
+use base64::Engine;
+
+use image::{DynamicImage, RgbImage};
 
 const TOLERANCE: f32 = 0.05;
 
@@ -106,4 +107,12 @@ pub fn should_process_frame_rgb(current_image: &RgbImage, previous_image: Option
         }
         None => true // Always process the first frame
     }
+}
+        
+pub fn image_to_base64(image: &DynamicImage) -> Result<String> {
+    let mut buffer = Vec::new();
+    let mut cursor = std::io::Cursor::new(&mut buffer);
+    image.write_to(&mut cursor, image::ImageFormat::Png)
+        .map_err(|e| anyhow::anyhow!("Failed to encode image: {}", e))?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(&buffer))
 }
