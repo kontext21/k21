@@ -2,22 +2,24 @@ use image::DynamicImage;
 use openh264::encoder::Encoder;
 use std::path::Path;
 use xcap::Monitor;
-
+use anyhow::Result;
 pub struct ScreenCapturer {
-    monitor_id: u32,
     encoder: Encoder,
     buf: Vec<u8>,
     frame_count: u32,
 }
 
 impl ScreenCapturer {
-    pub fn new(monitor_id: u32) -> Self {
+    pub fn new() -> Self {
         Self {
-            monitor_id,
             encoder: Encoder::new().unwrap(),
             buf: Vec::new(),
             frame_count: 0,
         }
+    }
+
+    pub fn is_buf_empty(&self) -> bool {
+        self.buf.len() == 0
     }
 
     pub fn frame(&mut self, image: &DynamicImage) {
@@ -50,12 +52,7 @@ impl ScreenCapturer {
         use minimp4::Mp4Muxer;
         use std::io::{Cursor, Read, Seek, SeekFrom};
 
-        let monitor = Monitor::all()
-            .unwrap()
-            .into_iter()
-            .find(|m| m.id() == self.monitor_id)
-            .ok_or_else(|| anyhow::anyhow!("Monitor not found"))
-            .unwrap();
+        let monitor = get_primary_monitor();
 
         let mut video_buffer = Cursor::new(Vec::new());
         let mut mp4muxer = Mp4Muxer::new(&mut video_buffer);
@@ -65,6 +62,7 @@ impl ScreenCapturer {
             false,
             "Screen capturer",
         );
+
         mp4muxer.write_video_with_fps(&self.buf, fps as u32);
         mp4muxer.close();
 
@@ -81,4 +79,40 @@ impl ScreenCapturer {
         self.buf.clear();
         self.frame_count = 0;
     }
+}
+
+fn get_monitor(monitor_id: u32) -> Monitor {
+    Monitor::all()
+        .unwrap()
+        .into_iter()
+        .find(|m| m.id() == monitor_id)
+        .ok_or_else(|| anyhow::anyhow!("Monitor not found"))
+        .unwrap()
+}
+
+fn get_primary_monitor_id() -> u32 {
+    Monitor::all()
+        .unwrap()
+        .iter()
+        .find(|m| m.is_primary())
+        .unwrap()
+        .id()
+}
+
+pub fn get_primary_monitor() -> Monitor {
+    get_monitor(get_primary_monitor_id())
+}
+
+pub async fn get_screenshot() -> Result<DynamicImage> {
+    let image = std::thread::spawn(move || -> Result<DynamicImage> {
+        let monitor = get_primary_monitor();
+        let image = monitor
+            .capture_image()
+            .map_err(anyhow::Error::from)
+            .map(DynamicImage::ImageRgba8)?;
+        Ok(image)
+    })
+    .join()
+    .unwrap()?;
+    Ok(image)
 }

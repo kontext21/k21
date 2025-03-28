@@ -1,8 +1,14 @@
 use anyhow::Result;
 use image::DynamicImage;
 
+use super::types::OcrConfig;
+
+
 #[cfg(target_os = "windows")]
-pub async fn process_ocr_windows(img: &DynamicImage) -> Result<String> {
+pub async fn process_ocr_windows(img: &DynamicImage, config: &OcrConfig) -> Result<String> {
+
+    log::info!("Processing OCR on Windows, config.boundingboxes: {:?} not in use for bounding boxes", config.bounding_boxes);
+
     use std::io::Cursor;
     use windows::{
         Graphics::Imaging::BitmapDecoder,

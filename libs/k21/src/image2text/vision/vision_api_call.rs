@@ -1,17 +1,12 @@
-use std::path::Path;
-
-use axum::{routing::post, Json, Router};
-use image::DynamicImage;
 use serde::{Deserialize, Serialize};
 use reqwest::header::{HeaderMap, HeaderValue};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
+use anyhow::Result;
+use crate::common::{get_current_timestamp_str, ImageData, ProcessingType};
 
-#[derive(Deserialize)]
-struct UserRequest {
-    api_key: String,
-    model: String,
-    messages: Vec<Message>,
-}
+use super::VisionConfig;
+
+const DEFAULT_PROMPT: &str = "What is in this image?";
 
 #[derive(Deserialize, Serialize)]
 struct Message {
@@ -47,12 +42,6 @@ struct MessageResponse {
     content: String,
 }
 
-// // Response to the user
-// #[derive(Serialize)]
-// struct ImageToTextResponse {
-//     extracted_text: String,
-// }
-
 async fn image_path_to_base64(image_path: &str) -> String {
     // Check if it's a URL or a file path
     if image_path.starts_with("http://") || image_path.starts_with("https://") {
@@ -66,13 +55,6 @@ async fn image_path_to_base64(image_path: &str) -> String {
         STANDARD.encode(buffer)
     }
 }
-
-// fn dynamic_image_to_base64(image: &DynamicImage) -> String {
-//     let mut buffer = Vec::new();
-//     image.write_to(&mut std::io::Cursor::new(&mut buffer), image::ImageFormat::Png)
-//         .expect("Failed to encode image to PNG");
-//     STANDARD.encode(&buffer)
-// }
 
 async fn call_openrouter(url: &str, api_key: &str, model: &str, base64_str: &String, prompt: &str) -> String {
     let client = reqwest::Client::new();
@@ -90,11 +72,11 @@ async fn call_openrouter(url: &str, api_key: &str, model: &str, base64_str: &Str
                 "role": "user",
                 "content": [
                     { "type": "text", "text": prompt },
-                    { 
+                    {
                         "type": "image_url",
                         "image_url": {
                             "url": format!("data:image/png;base64,{}", base64_str)
-                        } 
+                        }
                     }
                 ]
             }
@@ -127,54 +109,22 @@ async fn call_openrouter(url: &str, api_key: &str, model: &str, base64_str: &Str
     }
 }
 
-// async fn handle_request(Json(payload): Json<UserRequest>) -> String {
-//     for message in &payload.messages {
-//         for content in &message.content {
-//             if let Content::Image { image_url, .. } = content {
-//                 let extracted_text = call_openrouter(&payload.api_key, &payload.model, &image_url.url).await;
-//                 return extracted_text;
-//             }
-//         }
-//     }
-
-//     "No image found".to_string()
-// }
-
-// async fn process_image_vision_from_DynamicImage(image: &DynamicImage, api_key: &str, model: &str, prompt: Option<&str>) -> String {
-//     let base64_str = dynamic_image_to_base64(image);
-//     process_image_vision(base64_str, api_key, model, prompt).await
-// }
-
-pub async fn process_image_vision_from_path(image_path: &String, url: &str, api_key: &str, model: &str, prompt: Option<&str>) -> String {
+pub async fn process_image_vision_from_path(image_path: &String, vision_config: &VisionConfig) -> Result<ImageData> {
     let image_base64 = image_path_to_base64(image_path).await;
-    process_image_vision(image_base64, url, api_key, model, prompt).await
+    let vision_res = process_image_vision(image_base64, vision_config).await;
+    let image_data = ImageData::new(get_current_timestamp_str(), 0, vision_res, ProcessingType::Vision);
+    Ok(image_data)
 }
 
-async fn process_image_vision(image_base64: String, url: &str, api_key: &str, model: &str, prompt: Option<&str>) -> String {
+pub async fn process_image_vision(image_base64: String, vision_config: &VisionConfig) -> String {
+    let (url, api_key, model, prompt) = vision_config.unpack()
+        .expect("Failed to unpack vision config, some fields are missing");
 
     let final_prompt = if let Some(prompt) = prompt {
         prompt
     } else {
-        "What is in this image?"
+        DEFAULT_PROMPT
     };
 
     call_openrouter(url, api_key, model, &image_base64, &final_prompt).await
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_process_image_vision_from_path() {
-        // Replace with a path to a test image that exists in your project
-        let test_image_path: &str = "/Users/ferzu/rustTest/k21-node/__test__/screenshot-9.png";
-        let url = "https://api.openai.com/v1/chat/completions";
-        let key="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";
-        let result = process_image_vision_from_path(&test_image_path.to_string(), url, key, "gpt-4-turbo", Some("What is in this image?")).await;
-
-        // Basic check that we got some result
-        assert!(!result.is_empty());
-        println!("Vision API result: {}", result);
-    }
 }
