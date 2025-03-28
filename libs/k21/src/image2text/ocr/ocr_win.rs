@@ -6,6 +6,9 @@ use super::types::OcrConfig;
 
 #[cfg(target_os = "windows")]
 pub async fn process_ocr_windows(img: &DynamicImage, config: &OcrConfig) -> Result<String> {
+
+    log::info!("Processing OCR on Windows, config.boundingboxes: {:?} not in use for bounding boxes", config.bounding_boxes);
+
     use std::io::Cursor;
     use windows::{
         Graphics::Imaging::BitmapDecoder,
@@ -13,7 +16,6 @@ pub async fn process_ocr_windows(img: &DynamicImage, config: &OcrConfig) -> Resu
         Storage::Streams::{DataWriter, InMemoryRandomAccessStream},
     };
 
-    let (width, height) = img.dimensions();
     let mut img_buffer = Vec::new();
     img.write_to(&mut Cursor::new(&mut img_buffer), image::ImageFormat::Png)
         .map_err(|err| anyhow::anyhow!("Error processing image: {}", err))?;
@@ -31,23 +33,5 @@ pub async fn process_ocr_windows(img: &DynamicImage, config: &OcrConfig) -> Resu
     let text_engine = OcrEngine::TryCreateFromUserProfileLanguages()?;
     let extracted_text = text_engine.RecognizeAsync(&soft_bitmap)?.get()?;
 
-    if config.bounding_boxes.unwrap_or(false) {
-        let mut result = Vec::new();
-        let lines = extracted_text.Lines()?;
-        
-        for line in lines {
-            if let Ok(rect) = line.GetBoundingRect()? {
-                // Normalize coordinates to 0-1 range
-                let x = rect.X as f32 / width as f32;
-                let y = rect.Y as f32 / height as f32;
-                
-                result.push(format!("({:.2}, {:.2}) {}", x, y, line.Text()?));
-            } else {
-                result.push(line.Text()?.to_string());
-            }
-        }
-        Ok(result.join(" "))
-    } else {
-        Ok(extracted_text.Text()?.to_string())
-    }
+    Ok(extracted_text.Text()?.to_string())
 }
