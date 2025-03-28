@@ -2,9 +2,50 @@
 name = "k21-screen"
 version = "0.1.0"
 edition = "2021"
+default-run = "k21-server"
+
+
+[workspace]
+members = [
+    "libs/k21"
+]
+
+[[bin]]
+name = "k21-screen-cli"
+path = "src/screen/main.rs"
+
+[[bin]]
+name = "k21-processor-cli"
+path = "src/processor/main.rs"
+
+[[bin]]
+name = "k21-server"
+path = "src/server/main.rs"
 
 [dependencies]
-clap = { version = "4.4", features = ["derive"] }
-screenshots = "0.8.5"
-tokio = { version = "1.36", features = ["full"] }
-image = "0.24"
+anyhow = "1.0.95"
+image = "0.25.5"
+tokio = { version = "1.15", features = ["full", "tracing"] }
+clap = { version = "4.5.30", features = ["derive"] }
+log = "0.4.25"
+env_logger = "0.11.6"
+humantime = "2.1.0"
+imageproc = "0.25.0"
+minimp4 = "0.1.2"
+openh264 = "0.7.2"
+ctrlc = "3.4.5"
+rusqlite = { version = "0.33.0", features = ["bundled"] }
+chrono = "0.4"
+dirs = "5.0.1"
+axum = "0.7"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1"
+base64 = "0.21"
+mp4parse = "0.12.1"
+mp4 = "0.14.0"
+
+# OCR
+rusty-tesseract = { git = "https://github.com/louis030195/rusty-tesseract.git", branch = "main" }
+tower = "0.4"
+tower-http = { version = "0.4", features = ["limit"] }
+k21 = { path = "libs/k21" }
