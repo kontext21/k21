@@ -47,7 +47,7 @@ pub async fn perform_ocr_on_video_path(path: &str) -> Result<ImageDataCollection
 }
 
 pub async fn run_live_screen_capture_ocr(screen_capture_config: &ScreenCaptureConfig, processor_config: &ProcessorConfig) -> ImageDataCollection {
-    log::debug!("Starting capture at {} fps", screen_capture_config.fps);
+    log::debug!("Starting capture at {} fps", screen_capture_config.get_fps());
 
     let ocr_results = Arc::new(Mutex::new(ImageDataCollection::new()));
 

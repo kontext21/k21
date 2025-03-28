@@ -16,14 +16,14 @@ pub async fn capture(config: ScreenCaptureConfig) -> Result<()> {
 }
 
 pub async fn capture_with_stdout(mut config: ScreenCaptureConfig, stdout: bool) -> Result<()> {
-    if config.save_video {
-        config.output_dir_video = Some(match &config.output_dir_video {
+    if config.get_save_video_to().is_some() {
+        config.save_video_to = Some(match &config.get_save_video_to() {
             Some(path) => to_verified_path(path)?.to_string_lossy().to_string(),
             None => std::env::current_dir()?.to_string_lossy().to_string(), 
         });
     }
 
-    log::info!("Starting capture at {} fps", config.fps);
+    log::info!("Starting capture at {} fps", config.get_fps());
 
     let (screenshot_tx, mut screenshot_rx) = channel(512);
     let (close_tx, close_rx) = watch::channel(false);
@@ -53,9 +53,9 @@ pub fn spawn_screenshot_task(
     close_tx: tokio::sync::watch::Sender<bool>
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn({
-        let interval = Duration::from_secs_f32(1.0 / config.fps);
-        let total_frames_to_process = config.record_length_in_seconds * config.fps as u64;
-        let live_capture = config.record_length_in_seconds == 0;
+        let interval = Duration::from_secs_f32(1.0 / config.get_fps());
+        let total_frames_to_process = config.get_duration() * config.get_fps() as u64;
+        let live_capture = config.get_duration() == 0;
 
         async move {
             let mut frame_counter: u64 = 1;
@@ -116,12 +116,12 @@ pub async fn handle_captured_frames(
     ).await;
     
     // Save final video chunk if needed
-    if config.save_video && !screen_record.is_buf_empty() {
+    if config.get_save_video_to().is_some() && !screen_record.is_buf_empty() {
         save_video_chunk(
             screen_record, 
             &mut chunk_number, 
-            config.fps, 
-            config.output_dir_video.as_ref().unwrap()
+            config.get_fps(), 
+            config.get_save_video_to().as_ref().unwrap()
         );
     }
     
@@ -136,7 +136,10 @@ async fn save_or_send_captured_frames(
     mut close_rx: tokio::sync::watch::Receiver<bool>,
     chunk_number: &mut u64,
 ) {
-    let total_fps_in_chunk = config.fps as u64 * config.video_chunk_duration_in_seconds;
+    let total_fps_in_chunk = config
+        .get_video_chunk_duration()
+        .map(|duration| config.get_fps() as u64 * duration)
+        .unwrap_or(u64::MAX);  // If no chunk duration specified, use max value to prevent chunks
 
     loop {
         tokio::select! {
@@ -146,7 +149,7 @@ async fn save_or_send_captured_frames(
                 }
 
                 // record the frame
-                if config.save_video {
+                if config.get_save_video_to().is_some() {
                     screen_record.frame(&image);
                     log::info!("frame {}", frame_number);
 
@@ -156,13 +159,13 @@ async fn save_or_send_captured_frames(
                             frame_number,
                             total_fps_in_chunk
                         );
-                        save_video_chunk(screen_record, chunk_number, config.fps, config.output_dir_video.as_ref().unwrap());
+                        save_video_chunk(screen_record, chunk_number, config.get_fps(), config.get_save_video_to().as_ref().unwrap());
                     }
                 }
 
                 // save screenshot to disk
-                if config.save_screenshot {
-                    if let Some(output_dir) = &config.output_dir_screenshot {
+                if config.get_save_screenshot_to().is_some() {
+                    if let Some(output_dir) = &config.get_save_screenshot_to() {
                         save_screenshot(frame_number, image.clone(), output_dir);
                     } else {
                         log::warn!("Screenshot saving enabled but no output directory specified");
@@ -179,8 +182,8 @@ async fn save_or_send_captured_frames(
         }
     }
     
-    if config.save_screenshot {
-        if let Some(output_dir) = &config.output_dir_screenshot {
+    if config.get_save_screenshot_to().is_some() {
+        if let Some(output_dir) = &config.get_save_screenshot_to() {
             log::info!("Total screenshots saved in directory: {}", 
                     output_dir);
         }
