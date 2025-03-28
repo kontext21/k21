@@ -28,7 +28,7 @@ struct ImageUrl {
 
 // OpenRouter Response
 #[derive(Deserialize)]
-struct OpenRouterResponse {
+struct VisionModelResponse {
     choices: Vec<Choice>,
 }
 
@@ -56,7 +56,7 @@ async fn image_path_to_base64(image_path: &str) -> String {
     }
 }
 
-async fn call_openrouter(url: &str, api_key: &str, model: &str, base64_str: &String, prompt: &str) -> String {
+async fn call_vision_model(url: &str, api_key: &str, model: &str, base64_str: &String, prompt: &str) -> String {
     let client = reqwest::Client::new();
     
     // Create headers
@@ -96,7 +96,7 @@ async fn call_openrouter(url: &str, api_key: &str, model: &str, base64_str: &Str
     let response_text = response.text().await.expect("Failed to get response text");
     
     // Try to parse the response
-    match serde_json::from_str::<OpenRouterResponse>(&response_text) {
+    match serde_json::from_str::<VisionModelResponse>(&response_text) {
         Ok(parsed_response) => {
             if let Some(choice) = parsed_response.choices.get(0) {
                 return choice.message.content.clone();
@@ -126,5 +126,5 @@ pub async fn process_image_vision(image_base64: String, vision_config: &VisionCo
         DEFAULT_PROMPT
     };
 
-    call_openrouter(url, api_key, model, &image_base64, &final_prompt).await
+    call_vision_model(url, api_key, model, &image_base64, &final_prompt).await
 }
