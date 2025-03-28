@@ -1,50 +1,65 @@
 use serde::{Deserialize, Serialize};
 
+const FPS_DEFAULT: f32 = 1.0;
+const DURATION_DEFAULT: u64 = 1;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScreenCaptureConfig {
-    pub fps: f32,
-    pub video_chunk_duration_in_seconds: u64,
-    pub save_screenshot: bool,
-    pub save_video: bool,
-    pub record_length_in_seconds: u64,
-    pub output_dir_video: Option<String>,
-    pub output_dir_screenshot: Option<String>,
+    pub fps: Option<f32>,
+    pub duration: Option<u64>,
+    pub save_screenshot_to: Option<String>,
+    pub save_video_to: Option<String>,
+    pub video_chunk_duration: Option<u64>,
 }
 
 impl Default for ScreenCaptureConfig {
     fn default() -> Self {
         Self {
-            fps: 1.0,
-            video_chunk_duration_in_seconds: 60,
-            save_screenshot: false,
-            save_video: false,
-            record_length_in_seconds: 1,
-            output_dir_video: None,
-            output_dir_screenshot: None,
+            fps: None,
+            duration: None,
+            save_screenshot_to: None,
+            save_video_to: None,
+            video_chunk_duration: None,
         }
     }
 }
 
 impl ScreenCaptureConfig {
     pub fn new(
-        fps: f32,
-        video_chunk_duration_in_seconds: u64,
-        save_screenshot: bool,
-        save_video: bool,
-        record_length_in_seconds: u64,
-        output_dir_video: Option<String>,
-        output_dir_screenshot: Option<String>,
+        fps: Option<f32>,
+        duration: Option<u64>,
+        save_screenshot_to: Option<String>,
+        save_video_to: Option<String>,
+        video_chunk_duration: Option<u64>,
     ) -> Self {
         let config: ScreenCaptureConfig = Self {
             fps,
-            video_chunk_duration_in_seconds,
-            record_length_in_seconds,
-            save_screenshot,
-            save_video,
-            output_dir_video,
-            output_dir_screenshot,
+            duration,
+            save_screenshot_to,
+            save_video_to,
+            video_chunk_duration,
             ..Default::default()
         };
         config
+    }
+
+    pub fn get_fps(&self) -> f32 {
+        self.fps.unwrap_or(FPS_DEFAULT)
+    }
+
+    pub fn get_duration(&self) -> u64 {
+        self.duration.unwrap_or(DURATION_DEFAULT)
+    }
+
+    pub fn get_save_screenshot_to(&self) -> Option<String> {
+        self.save_screenshot_to.clone()
+    }
+
+    pub fn get_save_video_to(&self) -> Option<String> {
+        self.save_video_to.clone()
+    }
+
+    pub fn get_video_chunk_duration(&self) -> Option<u64> {
+        self.video_chunk_duration.clone()
     }
 }

@@ -25,16 +25,16 @@ struct Cli {
     stdout: bool,
     #[arg(
         long,
-        help = "Save screenshot to disk", 
-        default_value_t = false
+        help = "Directory path to save screenshots",
+        value_parser
     )]
-    save_screenshot: bool,
+    save_screenshot_to: Option<String>,
     #[arg(
-        long, 
-        help = "Save video to disk", 
-        default_value_t = false
+        long,
+        help = "Directory path to save video",
+        value_parser
     )]
-    save_video: bool,
+    save_video_to: Option<String>,
 }
 
 #[tokio::main]
@@ -51,11 +51,11 @@ async fn main() {
     let _ = rt.enter();
 
     let config = ScreenCaptureConfig {
-        fps: cli.fps,
-        video_chunk_duration_in_seconds: cli.video_chunk_duration,
-        save_screenshot: cli.save_screenshot,
-        save_video: cli.save_video,
-        record_length_in_seconds: 0,
+        fps: Some(cli.fps),
+        save_screenshot_to: cli.save_screenshot_to,
+        save_video_to: cli.save_video_to,
+        duration: Some(0),
+        video_chunk_duration: Some(cli.video_chunk_duration),
         ..Default::default()
     };
 
