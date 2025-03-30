@@ -1,8 +1,6 @@
 mod utils;
 
-pub use utils::perform_ocr_on_image_from_path;
-pub use utils::perform_ocr_on_video_path;
-pub use utils::run_live_screen_capture_ocr;
-
+pub use utils::capture_and_process_screen;
+pub use utils::process_image;
 mod types;
 pub use types::*;

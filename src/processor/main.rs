@@ -1,12 +1,14 @@
 use clap::Parser;
 use image::{DynamicImage, RgbImage};
 use k21::image_utils::images_differ_rgb;
-use k21::mp4_pr::mp4_for_each_frame;
+use k21::mp4_pr::process_mp4_buffer_path;
 use k21::image2text::{process_ocr, OcrConfig};
 use k21::logger::init_logger_exe;
+use k21::process::ProcessorConfig;
+use k21::common::ImageDataCollection;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::io::{self, AsyncReadExt, BufReader};
 
@@ -62,11 +64,12 @@ async fn main() {
     } else if cli.mp4.is_some() {
         let char_counter = Arc::new(AtomicI32::new(0));        
         let start_time = std::time::Instant::now();
-        
-        mp4_for_each_frame(&cli.mp4.unwrap(), None)
+
+        let state = Arc::new(Mutex::new(ImageDataCollection::new()));
+        process_mp4_buffer_path(&cli.mp4.unwrap(), &ProcessorConfig::default(), state)
         .await
         .unwrap();
-        
+
         let elapsed = start_time.elapsed();
         log::info!("Total characters: {}", char_counter.load(Ordering::SeqCst));
         log::info!("Time taken: {:.2?}", elapsed);
@@ -139,10 +142,6 @@ async fn main() {
         }
     }
 
-    // main task
-    // while running.load(Ordering::SeqCst) {
-
-    // }
     log::info!("Exiting...");
     running.store(false, Ordering::SeqCst);
     rt.shutdown_timeout(Duration::from_nanos(0));

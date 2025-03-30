@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 
 
-pub fn ensure_path_exists(path: PathBuf) -> Result<PathBuf> {
+fn ensure_path_exists(path: PathBuf) -> Result<PathBuf> {
     if path.exists() {
         Ok(path)
     } else {
@@ -15,7 +15,7 @@ pub fn to_verified_path(path: &str) -> Result<PathBuf> {
     ensure_path_exists(absolute_path)
 }
 
-pub fn to_absolute_path(path: &str) -> Result<PathBuf> {
+fn to_absolute_path(path: &str) -> Result<PathBuf> {
     let path_buf = PathBuf::from(path);
 
     if path_buf.is_file() {
