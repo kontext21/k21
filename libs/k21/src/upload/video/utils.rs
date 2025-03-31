@@ -12,10 +12,8 @@ use super::bitstream_converter::Mp4BitstreamConverter;
 use crate::common::{decode_base64, get_results_from_state, ImageDataCollection};
 use crate::image_utils::convert_yuv_to_dynamic_image;
 use crate::image_utils::should_process_frame_luma;
-
-use crate::common::to_verified_path;
 use crate::process::{process_image, ProcessorConfig};
-// Module-level constant
+// Module-level constantd
 const THRESHOLD_VALUE: f32 = 0.05;
 
 pub async fn process_mp4_buffer_path(
@@ -46,7 +44,6 @@ pub async fn process_mp4_string_file_path(
     state: Arc<Mutex<ImageDataCollection>>
 ) -> Result<()> {
     let path = PathBuf::from(&file_path);
-    // let path = to_verified_path(&file_path)?;
     process_mp4_buffer_path(&path, config, state).await?;
     Ok(())
 }

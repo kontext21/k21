@@ -5,7 +5,6 @@ use std::time::{Duration, Instant};
 use tokio::io::{self, AsyncWriteExt};
 use tokio::sync::broadcast::channel;
 
-use crate::common::to_verified_path;
 use crate::capture::screen_record;
 use super::screen_record::get_screenshot;
 use tokio::sync::watch;
@@ -18,7 +17,7 @@ pub async fn capture(config: ScreenCaptureConfig) -> Result<()> {
 pub async fn capture_with_stdout(mut config: ScreenCaptureConfig, stdout: bool) -> Result<()> {
     if config.get_save_video_to().is_some() {
         config.save_video_to = Some(match &config.get_save_video_to() {
-            Some(path) => to_verified_path(path)?.to_string_lossy().to_string(),
+            Some(path) => path.to_string(),
             None => std::env::current_dir()?.to_string_lossy().to_string(), 
         });
     }

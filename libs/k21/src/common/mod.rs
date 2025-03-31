@@ -8,5 +8,6 @@ pub use types::ImageData;
 pub use types::ProcessingType;
 pub use types::ImageDataCollection;
 
-mod path_utils;
-pub use path_utils::to_verified_path;
+// mod path_utils;
+// pub use path_utils::parse_path;
+// pub use path_utils::to_verified_path;
