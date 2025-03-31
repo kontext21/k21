@@ -1,7 +1,7 @@
 use clap::Parser;
 use image::{DynamicImage, RgbImage};
 use k21::image_utils::images_differ_rgb;
-use k21::mp4_pr::process_mp4_buffer_path;
+use k21::upload::process_mp4_buffer_path;
 use k21::image2text::{process_ocr, OcrConfig};
 use k21::logger::init_logger_exe;
 use k21::process::ProcessorConfig;

@@ -1,5 +1,5 @@
 pub mod image_utils;
-pub mod mp4_pr;
+pub mod upload;
 pub mod image2text;
 pub mod logger;
 pub mod capture;

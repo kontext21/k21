@@ -9,7 +9,7 @@ use anyhow::{anyhow, Result};
 use openh264::decoder::{Decoder, DecoderConfig, Flush};
 
 use super::bitstream_converter::Mp4BitstreamConverter;
-use crate::common::{decode_base64, ImageDataCollection};
+use crate::common::{decode_base64, get_results_from_state, ImageDataCollection};
 use crate::image_utils::convert_yuv_to_dynamic_image;
 use crate::image_utils::should_process_frame_luma;
 
@@ -29,12 +29,24 @@ pub async fn process_mp4_buffer_path(
     Ok(())
 }
 
+pub async fn process_mp4(
+    file_path: String,
+    config: &ProcessorConfig,
+) -> Result<ImageDataCollection> {
+    let state = Arc::new(Mutex::new(ImageDataCollection::new()));
+    let state_clone = state.clone();
+    process_mp4_string_file_path(file_path, config, state_clone).await?;
+    let results = get_results_from_state(state).await?;
+    Ok(results)
+}
+
 pub async fn process_mp4_string_file_path(
     file_path: String,
     config: &ProcessorConfig,
     state: Arc<Mutex<ImageDataCollection>>
 ) -> Result<()> {
-    let path = to_verified_path(&file_path)?;
+    let path = PathBuf::from(&file_path);
+    // let path = to_verified_path(&file_path)?;
     process_mp4_buffer_path(&path, config, state).await?;
     Ok(())
 }
@@ -148,7 +160,7 @@ pub async fn process_mp4_buffer(mp4_data: &[u8], config: &ProcessorConfig, state
 async fn from_file_path_to_mp4_reader(path: &PathBuf) -> Result<std::vec::Vec<u8>>
 {
     let mut mp4 = Vec::new();
-    let mut file = File::open(path)?;
+    let mut file = File::open(&path)?;
     file.read_to_end(&mut mp4)?;
     Ok(mp4)
 }

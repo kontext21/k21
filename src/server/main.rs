@@ -101,7 +101,7 @@ async fn process_video_base64(Json(payload): Json<VideoBase64Request>) -> impl I
     let state_clone = Arc::clone(&state);
     
     // Process the MP4 data with shared state
-    match k21::mp4_pr::process_mp4_from_base64_with_state(
+    match k21::upload::process_mp4_from_base64_with_state(
         base64_part, 
         &ProcessorConfig::default(),
         state_clone

@@ -75,15 +75,12 @@ pub async fn capture_and_process_screen(screen_capture_config: &ScreenCaptureCon
     results
 }
 
-pub async fn process_image(
-    processor_config: &ProcessorConfig,
+pub async fn process_image_by_processing_type(
     image: &DynamicImage,
+    processor_config: &ProcessorConfig,
     frame_number: u64,
-    results_arc: Arc<Mutex<ImageDataCollection>>
-) {
-    let processing_type = &processor_config.processing_type;
-    
-    let result = match processing_type {
+) -> Option<String> {
+    match &processor_config.processing_type {
         ProcessingType::OCR => {
             let ocr_config = processor_config.ocr_config.as_ref().unwrap();
             match process_ocr(image, ocr_config).await {
@@ -106,12 +103,23 @@ pub async fn process_image(
             ).await;
             Some(result)
         }
-    };
+    }
+}
+
+pub async fn process_image(
+    processor_config: &ProcessorConfig,
+    image: &DynamicImage,
+    frame_number: u64,
+    results_arc: Arc<Mutex<ImageDataCollection>>
+) {
+    let processing_type = &processor_config.processing_type;
+    
+    let result = process_image_by_processing_type(image, processor_config, frame_number).await;
 
     if let Some(text) = result {
-        let timestamp = get_current_timestamp_str();
+        let timestamp: String = get_current_timestamp_str();
         let processing_type_clone = processing_type.clone();
-        let image_data = ImageData::new(timestamp, frame_number, text, processing_type_clone);
+        let image_data: ImageData = ImageData::new(timestamp, frame_number, text, processing_type_clone);
         
         if let Ok(mut results) = results_arc.lock() {
             results.push(image_data);

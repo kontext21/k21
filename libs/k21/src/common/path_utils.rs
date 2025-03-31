@@ -18,9 +18,9 @@ pub fn to_verified_path(path: &str) -> Result<PathBuf> {
 fn to_absolute_path(path: &str) -> Result<PathBuf> {
     let path_buf = PathBuf::from(path);
 
-    if path_buf.is_file() {
-        return Err(anyhow::anyhow!("Path is a file, expected a directory: {}", path_buf.display()));
-    }
+    // if path_buf.is_file() {
+    //     return Err(anyhow::anyhow!("Path is a file, expected a directory: {}", path_buf.display()));
+    // }
     
     if path_buf.is_absolute() {
         return Ok(path_buf);
