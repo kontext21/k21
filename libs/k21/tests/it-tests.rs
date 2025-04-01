@@ -1,9 +1,5 @@
 use k21::capture::{self, ScreenCaptureConfig};
 use std::time::Duration;
-use k21::upload::process_upload;
-use k21::process::ProcessorConfig;
-use std::path::Path;
-use std::env;
 
 #[cfg(test)]
 mod capture_tests {
@@ -49,7 +45,6 @@ mod capture_tests {
 mod upload_tests {
     use k21::upload::process_upload;
     use k21::process::ProcessorConfig;
-    // use k21::upload::UploadConfig;
 
     #[tokio::test]
     async fn test_upload_png() {
@@ -65,12 +60,12 @@ mod upload_tests {
         println!("File exists: {}", test_file_path.exists());
         
         let result = process_upload(test_file_path.to_string_lossy().to_string(), &config).await;
-        
+
         match &result {
             Ok(results) => println!("PNG processing results: {} items", results.len()),
             Err(e) => println!("PNG upload failed with error: {:?}", e),
         }
-        
+
         assert!(result.is_ok(), "PNG upload should succeed");
         if let Ok(results) = result {
             assert!(!results.is_empty(), "Should have processing results");
