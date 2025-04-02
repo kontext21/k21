@@ -9,6 +9,7 @@ use crate::capture::screen_record;
 use super::screen_record::get_screenshot;
 use tokio::sync::watch;
 use super::ScreenCaptureConfig;
+use chrono::Local;
 
 pub async fn capture(config: ScreenCaptureConfig) -> Result<()> {
     capture_with_stdout(config, false).await
@@ -113,7 +114,7 @@ pub async fn handle_captured_frames(
         close_rx,
         &mut chunk_number,
     ).await;
-    
+
     // Save final video chunk if needed
     if config.get_save_video_to().is_some() && !screen_record.is_buf_empty() {
         save_video_chunk(
@@ -206,16 +207,22 @@ async fn send_frame_to_stdout(frame_number: u64, image: &DynamicImage) {
 }
 
 fn save_video_chunk(screen_record: &mut screen_record::ScreenCapturer, chunk_number: &mut u64, fps: f32, output_dir_video: &str) {
-    // save video chunk to disk with unique name using the provided output directory
-    let path = std::path::PathBuf::from(output_dir_video).join(format!("output-{}.mp4", chunk_number));
+
+    let timestamp = Local::now().format("%Y%m%d_%H%M%S");
+    let path = std::path::PathBuf::from(output_dir_video)
+            .join(format!("output-{}-{}.mp4", timestamp, chunk_number));
+    
     screen_record.save(&path, fps);
     *chunk_number += 1;
 }
 
 fn save_screenshot(frame_number: u64, image: DynamicImage, output_dir: &str) {
-    let output_dir = std::path::PathBuf::from(output_dir);
+
+    let timestamp = Local::now().format("%Y%m%d_%H%M%S");
+    let path = std::path::PathBuf::from(output_dir)
+        .join(format!("screenshot-{}-{}.png", timestamp, frame_number));
+
     tokio::task::spawn(async move {
-        let path = output_dir.join(format!("screenshot-{}.png", frame_number));
         match image.save_with_format(&path, image::ImageFormat::Png) {
             Ok(_) => log::info!("Saved screenshot to {}", path.display()),
             Err(e) => log::error!("Failed to save screenshot: {}", e),

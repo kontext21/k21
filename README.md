@@ -1,8 +1,22 @@
+# k21
 
-k21-screen - A CLI tool to handle screen captures
-k21-processor - A CLI tool to handle processing of screen captures
+A collection of tools and libraries for screen capture and processing:
 
-## Compilation
+- `k21` - Core library that can be consumed by external applications
+- `k21-screen` - A CLI tool to handle screen captures
+- `k21-processor` - A CLI tool to handle processing of screen captures
+- `k21-server` - A server that provides HTTP endpoints for screen capture and processing
+
+## Library Usage
+
+The `k21` library can be used as a dependency in your Rust projects:
+
+```toml
+[dependencies]
+k21 = { git = "https://github.com/kontext21/k21" }
+```
+
+## CLI Tools Compilation
 
 ```bash
 cargo build
@@ -11,15 +25,22 @@ cargo build
 ## Usage
 
 ```bash
+# Screen capture
 ./k21-screen
+./k21-screen --fps 1 --output captures/
+
+# Processing
 ./k21-processor --mp4 file.mp4
 ./k21-processor --image file.png
 ./k21-screen --stdout | ./k21-processor --stdin
+
+# Server
+./k21-server
 ```
-Will run and capture until process is stopp
 
 ## Options
 
+### k21-screen
 - `--fps`: Screen refresh rate in fps (frames per second) - default: 1
 
 ## TODO k21-screen
@@ -34,7 +55,8 @@ Will run and capture until process is stopp
 - [ ] `--count`: Number of captures to take 
 - [ ] `--quality`: Output quality (0-100)
 
-## ideas
+## Ideas
 - processor could just be able to handle inputs without having to specify the input type
 - maybe processor could handle multiple images / inputs at once
 - how do we preserve the original time stamp
+- add websocket support to server for real-time updates
