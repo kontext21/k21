@@ -3,7 +3,7 @@
 The K21 SDK has everything you need to capture end-user data, contextualize it 
 and deliver real user value with AI.
 
-More information in the [docs.kontext21.com](https://docs.kontext21.com/) and on [kontext21.com](https://kontext21.com/)
+More information: [docs.kontext21.com](https://docs.kontext21.com/) & [kontext21.com](https://kontext21.com/)
 
 Components:
 - `k21` - Core library that can be consumed by external applications
