@@ -24,7 +24,7 @@ services:
       args:
         - BUILDPLATFORM=linux/amd64
         - TARGETPLATFORM=linux/amd64
-    image: europe-west10-docker.pkg.dev/kontext21-cloud/kontext21-cloud/k21-server:latest
+    image: ${DOCKER_REGISTRY}/${PROJECT_ID}/${PROJECT_ID}/${IMAGE_NAME}:${IMAGE_TAG}
     ports:
       - "8080:8080"
     environment:
