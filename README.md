@@ -1,7 +1,11 @@
-# k21
+# K21 SDK
 
-A collection of tools and libraries for screen capture and processing:
+The K21 SDK has everything you need to capture end-user data, contextualize it 
+and deliver real user value with AI.
 
+More information: [docs.kontext21.com](https://docs.kontext21.com/) & [kontext21.com](https://kontext21.com/)
+
+Components:
 - `k21` - Core library that can be consumed by external applications
 - `k21-screen` - A CLI tool to handle screen captures
 - `k21-processor` - A CLI tool to handle processing of screen captures
