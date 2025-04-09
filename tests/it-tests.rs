@@ -13,7 +13,8 @@ mod capture_tests {
             Some(1),
             None,
             None,
-            None
+            None,
+            Some(100)
         );
 
         // Test the capture function
@@ -28,7 +29,8 @@ mod capture_tests {
             Some(2),
             None,
             None,
-            None
+            None,
+            Some(100)
         );
 
         // Use tokio timeout to ensure the capture doesn't run too long

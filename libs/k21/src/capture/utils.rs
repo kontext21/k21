@@ -56,12 +56,12 @@ pub fn spawn_screenshot_task(
         let interval = Duration::from_secs_f32(1.0 / config.get_fps());
         let total_frames_to_process = config.get_duration() * config.get_fps() as u64;
         let live_capture = config.get_duration() == 0;
-
+        let quality = config.get_quality();
         async move {
             let mut frame_counter: u64 = 1;
             while live_capture || frame_counter <= total_frames_to_process {
                 let capture_start = Instant::now();
-                match get_screenshot().await {
+                match get_screenshot(quality).await {
                     Ok(image) => {
                         // Use try_send to avoid blocking if receiver is slow
                         if let Err(e) = screenshot_tx.send((frame_counter, image)) {

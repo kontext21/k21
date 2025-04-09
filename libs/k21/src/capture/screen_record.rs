@@ -103,16 +103,46 @@ pub fn get_primary_monitor() -> Monitor {
     get_monitor(get_primary_monitor_id())
 }
 
-pub async fn get_screenshot() -> Result<DynamicImage> {
+// pub async fn get_screenshot() -> Result<DynamicImage> {
+//     let image = std::thread::spawn(move || -> Result<DynamicImage> {
+//         let monitor = get_primary_monitor();
+//         let image = monitor
+//             .capture_image()
+//             .map_err(anyhow::Error::from)
+//             .map(DynamicImage::ImageRgba8)?;
+//         Ok(image)
+//     })
+//     .join()
+//     .unwrap()?;
+//     Ok(image)
+// }
+
+pub async fn get_screenshot(quality: u8) -> Result<DynamicImage> {
+    let quality = quality.clamp(1, 100);
+
     let image = std::thread::spawn(move || -> Result<DynamicImage> {
         let monitor = get_primary_monitor();
-        let image = monitor
+        let original = monitor
             .capture_image()
             .map_err(anyhow::Error::from)
             .map(DynamicImage::ImageRgba8)?;
-        Ok(image)
+
+        // Convert quality (1-100) to scale factor
+        // 100 = original size (scale by 1.0)
+        // 50 = half size (scale by 0.5)
+        // 1 = smallest (scale by 0.01)
+        let scale = quality as f32 / 100.0;
+        
+        let scaled = original.resize(
+            (original.width() as f32 * scale) as u32,
+            (original.height() as f32 * scale) as u32,
+            image::imageops::FilterType::Nearest
+        );
+
+        Ok(scaled)
     })
     .join()
     .unwrap()?;
+
     Ok(image)
 }

@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 const FPS_DEFAULT: f32 = 1.0;
 const DURATION_DEFAULT: u64 = 1;
 
+const QUALITY_DEFAULT: u8 = 100;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScreenCaptureConfig {
     pub fps: Option<f32>,
@@ -10,6 +12,7 @@ pub struct ScreenCaptureConfig {
     pub save_screenshot_to: Option<String>,
     pub save_video_to: Option<String>,
     pub video_chunk_duration: Option<u64>,
+    pub quality: Option<u8>,
 }
 
 impl Default for ScreenCaptureConfig {
@@ -20,6 +23,7 @@ impl Default for ScreenCaptureConfig {
             save_screenshot_to: None,
             save_video_to: None,
             video_chunk_duration: None,
+            quality: Some(QUALITY_DEFAULT),
         }
     }
 }
@@ -31,6 +35,7 @@ impl ScreenCaptureConfig {
         save_screenshot_to: Option<String>,
         save_video_to: Option<String>,
         video_chunk_duration: Option<u64>,
+        quality: Option<u8>,
     ) -> Self {
         let config: ScreenCaptureConfig = Self {
             fps,
@@ -38,6 +43,7 @@ impl ScreenCaptureConfig {
             save_screenshot_to,
             save_video_to,
             video_chunk_duration,
+            quality,
             ..Default::default()
         };
         config
@@ -61,5 +67,9 @@ impl ScreenCaptureConfig {
 
     pub fn get_video_chunk_duration(&self) -> Option<u64> {
         self.video_chunk_duration.clone()
+    }
+
+    pub fn get_quality(&self) -> u8 {
+        self.quality.unwrap_or(QUALITY_DEFAULT)
     }
 }
